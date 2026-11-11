@@ -259,7 +259,7 @@
     generate: 'Generate preview',
     upToDate: 'The map shows these settings.',
     running: (elapsed, about) => `Computing… ${elapsed} of about ${about}`,
-    sketch: step => `A first sketch, one point every ${step} blocks. The figures and the list wait for the full map.`,
+    sketch: step => `A sketch, one point every ${step} blocks, finer as the run goes. The figures and the list wait for the full map.`,
     figures: 'In figures',
     change: 'change',
     was: v => `before: ${v}`,
@@ -388,8 +388,18 @@
   // Grid points per side, one every 16 blocks whatever the width, so the measures keep their meaning.
   let samples = 512;
   // Seconds a run takes, about: the server starts, then every point costs the same (measured on
-  // 512, 1024 and 2048 points a side). Four times the area is four times the wait.
-  const about = points => Math.round((11 + points * points * 42e-6) / 5) * 5;
+  // 512, 1024 and 2048 points a side). Four times the area is four times the wait. The cost of a
+  // point is that of the machine: the first guess is the one it was written on (half of 16 threads),
+  // then each finished run gives this machine's own.
+  const startSeconds = 11;
+  let pointSeconds = 80e-6;
+  try { pointSeconds = +localStorage.getItem('preview.pointSeconds') || pointSeconds; } catch { }
+  const about = points => Math.round((startSeconds + points * points * pointSeconds) / 5) * 5;
+  function learnPace(points, seconds) {
+    if (seconds <= startSeconds) return;
+    pointSeconds = (seconds - startSeconds) / (points * points);
+    try { localStorage.setItem('preview.pointSeconds', pointSeconds); } catch { }
+  }
 
   // The button keeps its name. It is greyed when there is nothing new to compute, and the line
   // above it says why: the map already shows these settings, or a run is under way.
@@ -618,15 +628,18 @@
     return { ...meta, heights, biomeAt: biomes, colours, ...measure(meta, heights, biomes) };
   }
 
-  // The sketch a run writes first: the same square, one point in four along each side. Nothing is
-  // measured on it, since flat land is defined on the 16-block grid: it is only drawn.
-  async function loadSketch() {
+  // The sketches a run writes first: the same square with fewer points, each finer than the one
+  // before. Nothing is measured on them, since flat land is defined on the 16-block grid: they are
+  // only drawn. Gives nothing unless the last one written is finer than `finerThan` blocks a point.
+  async function loadSketch(finerThan = Infinity) {
     const meta = await fetch('/preview/data/coarse.json').then(r => r.ok ? r.json() : null);
-    if (!meta) return null;
+    if (!meta || meta.step >= finerThan) return null;
+    // The step is in the names, so these are the files of that sketch even if a finer one lands meanwhile.
     const [heights, biomeAt] = await Promise.all([
-      fetch('/preview/data/coarse-heights.bin').then(r => r.arrayBuffer()).then(b => new Int16Array(b)),
-      fetch('/preview/data/coarse-biomes.bin').then(r => r.arrayBuffer()).then(b => new Uint16Array(b)),
+      fetch(`/preview/data/coarse-${meta.step}-heights.bin`).then(r => r.arrayBuffer()).then(b => new Int16Array(b)),
+      fetch(`/preview/data/coarse-${meta.step}-biomes.bin`).then(r => r.arrayBuffer()).then(b => new Uint16Array(b)),
     ]);
+    if (heights.length !== meta.samples ** 2 || biomeAt.length !== meta.samples ** 2) return null;
     return { ...meta, heights, biomeAt, colours: meta.biomes.map(b => biomeColour(b.id)), sketch: true };
   }
 
@@ -1005,14 +1018,16 @@
     };
     const clock = setInterval(tick, 1000);
     tick();
-    // While the server computes, the sketch it writes first takes the map's place. The figures and
-    // the list stay those of the map before, stepped back, until the full map is there.
+    // While the server computes, the sketches it writes first take the map's place, each finer than
+    // the one before. The figures and the list stay those of the map before, stepped back, until the
+    // full map is there.
     const old = world;
     let waiting = true, poll = 0;
     const lookForSketch = async () => {
-      const sketch = await loadSketch().catch(() => null);
+      const sketch = await loadSketch(world?.sketch ? world.step : Infinity).catch(() => null);
       if (!waiting) return;
-      if (!sketch) { poll = setTimeout(lookForSketch, 1000); return; }
+      poll = setTimeout(lookForSketch, 1000);
+      if (!sketch) return;
       world = sketch;
       $('frame').classList.remove('busy');
       $('numbers').classList.add('stale');
@@ -1044,7 +1059,7 @@
     $('frame').classList.remove('busy');
     $('numbers').classList.remove('stale');
     $('numbers').inert = false;
-    if (done) { showWorld(); $('probe').textContent = text.done(seconds()); }
+    if (done) { learnPace(samples, seconds()); showSpan(); showWorld(); $('probe').textContent = text.done(seconds()); }
     else if (sketched) { if (!world) map.width = map.height = 0; showTabs(); restProbe(); }
     showButton();
   });
