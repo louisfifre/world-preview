@@ -47,18 +47,25 @@ import net.minecraft.world.level.levelgen.densityfunction.ScopedDensityBuffer;
  * high is the ground, and which biome is at the surface. This is the same rule our placement code
  * follows, and it is why a map of 8000 blocks takes seconds instead of the minutes real chunks need.
  *
- * <p>Two passes over the same square: a coarse one first, one point in four along each side, so the
- * page can show a sketch of the map while the full one is computed. Output, in the given folder:
+ * <p>Several passes over the same square, from coarse to full, so the page can show a sketch of the
+ * map that gets finer while the full one is computed. Output, in the given folder:
  * {@code preview.json} (grid description and biome list), {@code heights.bin} (one little-endian
  * int16 per point, row by row, north to south) and {@code biomes.bin} (one little-endian uint16 per
- * point: an index into the biome list). The coarse pass writes the same three files under other
- * names, written first: {@code coarse.json}, {@code coarse-heights.bin}, {@code coarse-biomes.bin}.
+ * point: an index into the biome list). Each coarse pass writes the same three files under other
+ * names: {@code coarse-<step>-heights.bin} and {@code coarse-<step>-biomes.bin}, then
+ * {@code coarse.json}, which each pass replaces. The step in the binary names keeps a reader of
+ * {@code coarse.json} from pairing it with the files of another pass.
  */
 final class Sampler {
 	/** Grid points per side of a tile, the square of columns that shares one noise chunk. */
 	private static final int TILE = 16;
-	/** The coarse pass keeps one point in COARSE of the full grid along each side. */
-	private static final int COARSE = 4;
+	/**
+	 * The coarse passes, in order: each keeps one point in that many of the full grid along each side.
+	 * Each costs about a quarter of the next or less, so the whole ladder adds little to the wait.
+	 */
+	private static final int[] COARSE = {16, 4, 2};
+	/** A coarse pass with fewer points a side than this shows too little to be worth its picture. */
+	private static final int COARSE_MIN = 128;
 
 	private Sampler() {
 	}
@@ -120,15 +127,19 @@ final class Sampler {
 
 	private static void run(Path out, Generator source, ForkJoinPool pool, int samples, int step, int origin)
 			throws IOException {
-		// The coarse pass covers the same square with a step COARSE times longer. It leaves the
-		// aquifers out: setting one up looks for the surface level all over the area its columns
-		// cover, so its cost follows the area, not the number of points, and with aquifers the sketch
-		// would cost 40% of the full pass instead of 7% (measured). Without them, the ground is the
-		// first block where the density is solid, which misses only the stone walls aquifers put
-		// between water and caves (on seed cap-1, all 16384 coarse heights came out the same either
-		// way). So the sketch is close, not proven exact, and the full pass computes its points again
-		// rather than reusing them.
-		write(out, "coarse", source, sample(source, pool, samples / COARSE, step * COARSE, origin, false));
+		// A coarse pass covers the same square with a longer step. It leaves the aquifers out: setting
+		// one up looks for the surface level all over the area its columns cover, so its cost follows
+		// the area, not the number of points, and with aquifers a pass of one point in four would cost
+		// 40% of the full pass instead of 7% (measured). Without them, the ground is the first block
+		// where the density is solid, which misses only the stone walls aquifers put between water and
+		// caves (on seed cap-1, all 16384 heights of such a pass came out the same either way). So a
+		// sketch is close, not proven exact, and the full pass computes its points again rather than
+		// reusing them.
+		for (int coarse : COARSE) {
+			if (samples % coarse == 0 && samples / coarse >= COARSE_MIN) {
+				write(out, "coarse", source, sample(source, pool, samples / coarse, step * coarse, origin, false));
+			}
+		}
 		write(out, "preview", source, sample(source, pool, samples, step, origin, true));
 	}
 
@@ -239,8 +250,8 @@ final class Sampler {
 
 	/**
 	 * Writes one pass as {@code <name>.json}, {@code heights.bin} and {@code biomes.bin}, the two binary
-	 * files prefixed with {@code <name>-} unless the name is {@code preview}, whose files keep their
-	 * first names.
+	 * files prefixed with {@code <name>-<step>-} unless the name is {@code preview}, whose files keep
+	 * their first names.
 	 */
 	private static void write(Path out, String name, Generator source, Grid grid) throws IOException {
 		Map<String, Integer> indexOf = new HashMap<>();
@@ -281,7 +292,7 @@ final class Sampler {
 		json.add("biomes", list);
 		json.addProperty("sampleMillis", grid.millis());
 
-		String prefix = name.equals("preview") ? "" : name + "-";
+		String prefix = name.equals("preview") ? "" : name + "-" + grid.step() + "-";
 		Files.write(out.resolve(prefix + "heights.bin"), heightBytes.array());
 		Files.write(out.resolve(prefix + "biomes.bin"), biomeBytes.array());
 		// Written last: its presence tells the caller the two binary files are complete.

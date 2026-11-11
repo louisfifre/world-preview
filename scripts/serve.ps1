@@ -244,7 +244,7 @@ try {
             elseif ($method -eq 'GET' -and $path -eq '/api/preview/config') {
                 Send-Reply $context 200 (ConvertTo-Json (Get-PackTectonic $Pack))
             }
-            elseif ($method -eq 'GET' -and $path -match '^/preview/data/((coarse-)?(heights|biomes)\.bin|preview\.json|coarse\.json|run\.json)$') {
+            elseif ($method -eq 'GET' -and $path -match '^/preview/data/((coarse-\d+-)?(heights|biomes)\.bin|preview\.json|coarse\.json|run\.json)$') {
                 $file = Join-Path $Out $Matches[1]
                 if (Test-Path $file) { Send-Bytes $context 200 ([IO.File]::ReadAllBytes($file)) 'application/octet-stream' }
                 else { Send-Reply $context 404 }

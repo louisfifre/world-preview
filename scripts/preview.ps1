@@ -5,8 +5,8 @@ Previews the world a seed and a Tectonic config would give, without playing and 
 .DESCRIPTION
 Starts a throwaway dedicated server with the pack and the world-preview mod. The mod asks the
 generator for the ground height and the surface biome on a grid, writes the answer and stops the
-server. The result lands in <Dir>\out: preview.json, heights.bin, biomes.bin, and first a sketch of
-them, coarse.json, coarse-heights.bin, coarse-biomes.bin.
+server. The result lands in <Dir>\out: preview.json, heights.bin, biomes.bin, and first sketches of
+them, each finer than the one before: coarse.json, coarse-<step>-heights.bin, coarse-<step>-biomes.bin.
 
 The throwaway server has its own folder, so a real server and its world are never touched.
 It refuses to start until eula.txt in that folder says eula=true: accepting the Minecraft EULA is
@@ -138,7 +138,7 @@ $world = 'seed-' + ($Seed -replace '[^A-Za-z0-9_-]', '_')
 ))
 
 # 5. Run. The mod stops the server itself once the files are written.
-Remove-Item (Join-Path $Out 'preview.json'), (Join-Path $Out 'coarse.json') -ErrorAction SilentlyContinue
+Remove-Item (Join-Path $Out 'preview.json'), (Join-Path $Out 'coarse.json'), (Join-Path $Out 'coarse-*.bin') -ErrorAction SilentlyContinue
 $watch = [Diagnostics.Stopwatch]::StartNew()
 $null = Invoke-Java $Dir (Join-Path $Dir 'last-run.log') @('-Xmx4G', '-XX:+UseZGC', "-Dworldpreview.out=$Out",
     "-Dworldpreview.samples=$Samples", "-Dworldpreview.step=$Step", '-jar', $launcher, 'nogui') -Background
