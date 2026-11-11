@@ -282,7 +282,9 @@
       temperature_scale:      ['Temperature scale', 'Lower: wider warm and cold zones.'],
       vegetation_scale:       ['Vegetation scale', 'Lower: wider dry and wet zones.'],
       temperature_multiplier: ['Temperature range', 'Lower: fewer deserts and ice lands.'],
-      temperature_offset:     ['Climate offset', 'Higher: a warmer world.'],
+      vegetation_multiplier:  ['Vegetation range', 'Lower: fewer very dry and very wet lands.'],
+      temperature_offset:     ['Temperature offset', 'Higher: a warmer world.'],
+      vegetation_offset:      ['Vegetation offset', 'Higher: a wetter world.'],
       vertical_scale:         ['Vertical scale', 'Higher: taller and steeper relief.'],
       flat_terrain_skew:      ['Flat against plateaus', 'Higher: more flat land, fewer plateaus.'],
       erosion_scale:          ['Erosion scale', 'Lower: wider massifs, vaster plains.'],
@@ -338,7 +340,8 @@
   // What each slider may explore. The starting values come from the pack.
   const ranges = {
     biomes:     { temperature_scale: [0.03, 0.5, 0.01], vegetation_scale: [0.03, 0.5, 0.01],
-                  temperature_multiplier: [0.5, 1.5, 0.05], temperature_offset: [-0.5, 0.5, 0.05] },
+                  temperature_multiplier: [0.5, 1.5, 0.05], vegetation_multiplier: [0.5, 1.5, 0.05],
+                  temperature_offset: [-0.5, 0.5, 0.05], vegetation_offset: [-0.5, 0.5, 0.05] },
     relief:     { vertical_scale: [0.5, 2, 0.025], flat_terrain_skew: [-0.5, 0.5, 0.05],
                   erosion_scale: [0.05, 0.5, 0.01], ridge_scale: [0.05, 0.5, 0.01] },
     continents: { continents_scale: [0.03, 0.3, 0.01], ocean_offset: [-1, -0.2, 0.05] },

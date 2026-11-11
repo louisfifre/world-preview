@@ -16,7 +16,7 @@ $DefaultDir = Join-Path $RepoRoot 'run\preview'
 
 # The Tectonic values the page may change. They are the sliders, so a pack without Tectonic has nothing to tune here.
 $TectonicKeys = 'temperature_scale', 'vegetation_scale', 'temperature_multiplier', 'temperature_offset',
-    'vertical_scale', 'flat_terrain_skew', 'erosion_scale', 'ridge_scale', 'continents_scale', 'ocean_offset'
+    'vegetation_multiplier', 'vegetation_offset', 'vertical_scale', 'flat_terrain_skew', 'erosion_scale', 'ridge_scale', 'continents_scale', 'ocean_offset'
 
 function Resolve-Pack([string]$Pack) {
     # The pack is the one input with no sensible default: -Pack first, then WORLD_PREVIEW_PACK.
