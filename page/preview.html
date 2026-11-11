@@ -1062,18 +1062,18 @@
 
   // ---------- generating ----------
 
-  $('generate').addEventListener('click', async () => {
-    const tectonic = Object.fromEntries(Object.entries(inputs).map(([key, input]) => [key, +input.value]));
-    // An empty seed is one drawn here, so the run can be named and done again.
-    const seed = $('seed').value.trim() || String(crypto.getRandomValues(new Uint32Array(1))[0] * 2 ** 20 + crypto.getRandomValues(new Uint32Array(1))[0] % 2 ** 20);
+  // Waits for a run with the page: the clock, the sketches, then the map or the trouble. `ended` resolves
+  // when the run is over and throws what went wrong. The run is either the one this page asks for, or one
+  // found under way on opening, `already` seconds old.
+  async function follow(ended, already = 0) {
     trouble = '';
     busy = true;
     $('generate').disabled = true;
     $('status').className = '';
     // The map on screen is about to be replaced: it steps back while the new one is computed.
     $('frame').classList.add('busy');
-    const started = Date.now();
-    const seconds = () => Math.round((Date.now() - started) / 1000);
+    const started = Date.now() - already * 1000;
+    const seconds =() => Math.round((Date.now() - started) / 1000);
     const wait = text.duration(about(samples));
     // Said twice: above the button, and on the dimmed map, where the eye is. Once the sketch is on
     // the map, only above the button.
@@ -1103,9 +1103,8 @@
     poll = setTimeout(lookForSketch, 1000);
     let done = false;
     try {
-      const reply = await fetch('/api/preview', { method: 'POST', body: JSON.stringify({ seed, samples, tectonic }) });
+      await ended();
       waiting = false;
-      if (!reply.ok) throw new Error(reply.status === 400 ? text.refused : text.failed);
       if (old) {
         before = old.figures;
         try { localStorage.setItem('preview.before', JSON.stringify(before)); } catch { }
@@ -1127,11 +1126,41 @@
     if (done) { learnPace(samples, seconds()); showSpan(); showWorld(); $('probe').textContent = text.done(seconds()); }
     else if (sketched) { if (!world) map.width = map.height = 0; showTabs(); restProbe(); }
     showButton();
+  }
+
+  $('generate').addEventListener('click', () => {
+    const tectonic = Object.fromEntries(Object.entries(inputs).map(([key, input]) => [key, +input.value]));
+    // An empty seed is one drawn here, so the run can be named and done again.
+    const seed = $('seed').value.trim() || String(crypto.getRandomValues(new Uint32Array(1))[0] * 2 ** 20 + crypto.getRandomValues(new Uint32Array(1))[0] % 2 ** 20);
+    follow(async () => {
+      const reply = await fetch('/api/preview', { method: 'POST', body: JSON.stringify({ seed, samples, tectonic }) });
+      if (!reply.ok) throw new Error(reply.status === 400 ? text.refused : text.failed);
+    });
   });
 
   world = await loadWorld();
   if (world) showWorld(); else showTabs();
   showButton();
+
+  // A window opened while the server computes joins that run: the seed, the area and the sliders are the
+  // run's, and the page waits with it. Only the window that asked holds the answer, so this one asks
+  // every second whether the run is over.
+  const running = await fetch('/api/preview/run').then(r => r.json()).catch(() => null);
+  if (running?.running) {
+    $('seed').value = running.seed;
+    samples = running.samples;
+    for (const [key, input] of Object.entries(inputs)) { input.value = running.tectonic[key] ?? packValues[key]; input.dispatchEvent(new Event('input')); }
+    showSpan();
+    follow(async () => {
+      while (true) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        const now = await fetch('/api/preview/run').then(r => r.json());
+        if (now.running) continue;
+        if (now.error) throw new Error(text.failed);
+        return;
+      }
+    }, running.seconds);
+  }
   scheme.addEventListener('change', paint);
 
   // The address can ask for a state, so a capture gets any view without a click:
