@@ -133,18 +133,25 @@
   /* Middle: the map. Tabs, map, legend and readout hang off one square, so they stay one block. */
   #stage { flex: 1; min-height: 0; display: grid; place-items: start center; container-type: size; }
   #frame { position: relative; margin-top: 40px; width: min(100cqw, 100cqh - 104px); aspect-ratio: 1; }
-  #frame > canvas, #relief, #grid { position: absolute; inset: 0; width: 100%; height: 100%; }
+  #flat, #map, #relief, #grid { position: absolute; inset: 0; width: 100%; height: 100%; }
   #relief canvas { display: block; width: 100%; height: 100%; }
-  #map { image-rendering: pixelated; cursor: crosshair; transition: opacity 200ms; }
+  /* The flat map may be looked at closer: --k is how many times, --x and --y where its corner went, in widths of the square. */
+  #flat { overflow: hidden; container-type: size; --k: 1; --x: 0; --y: 0; }
+  #map {
+    image-rendering: pixelated; cursor: crosshair; transition: opacity 200ms; touch-action: none;
+    transform-origin: 0 0; transform: translate(calc(var(--x) * 100%), calc(var(--y) * 100%)) scale(var(--k));
+  }
   #frame.busy #map, #frame.busy #relief, #frame.busy #grid { opacity: 0.3; }
   /* One square of the grid is 1024 blocks. */
   #grid {
     pointer-events: none;
     background-image: linear-gradient(to right, var(--grid) 1px, transparent 1px), linear-gradient(to bottom, var(--grid) 1px, transparent 1px);
-    background-size: 12.5% 12.5%;
+    /* The lines follow the map and keep their one pixel, which a scaled sheet would thicken. */
+    background-size: calc(12.5% * var(--k)) calc(12.5% * var(--k));
+    background-position: calc(var(--x) * 100cqw) calc(var(--y) * 100cqh);
   }
   #grid::after {
-    content: ""; position: absolute; left: 50%; top: 50%; width: 15px; height: 15px; transform: translate(-50%, -50%);
+    content: ""; position: absolute; left: calc((var(--x) + 0.5 * var(--k)) * 100%); top: calc((var(--y) + 0.5 * var(--k)) * 100%); width: 15px; height: 15px; transform: translate(-50%, -50%);
     background: linear-gradient(#fff, #fff) center / 15px 1px no-repeat, linear-gradient(#fff, #fff) center / 1px 15px no-repeat;
     filter: drop-shadow(0 0 1px #000) drop-shadow(0 0 1px #000);
   }
@@ -219,9 +226,11 @@
     <div id="stage">
       <div id="frame">
         <div id="tabs" class="choice"></div>
-        <canvas id="map"></canvas>
+        <div id="flat">
+          <canvas id="map"></canvas>
+          <div id="grid" hidden></div>
+        </div>
         <div id="relief" hidden></div>
-        <div id="grid" hidden></div>
         <div id="note"></div>
         <div id="under">
           <div id="legend" class="muted"></div>
@@ -355,6 +364,13 @@
   try {
     if (!localStorage.getItem('preview.sized')) { resizeTo(1400, 940); localStorage.setItem('preview.sized', '1'); }
   } catch { }
+
+  // The page is a window of its own, not a document: its text keeps one size. Ctrl with the wheel, a pinch
+  // (which arrives as the same thing) and Ctrl with plus or minus no longer zoom it. Ctrl+0 is left alone,
+  // to undo a zoom the browser kept from before.
+  addEventListener('wheel', event => { if (event.ctrlKey) event.preventDefault(); }, { passive: false });
+  addEventListener('keydown', event => { if ((event.ctrlKey || event.metaKey) && '+-=_'.includes(event.key)) event.preventDefault(); });
+
   for (const el of document.querySelectorAll('[data-text]')) el.textContent = text[el.dataset.text];
   $('seed').placeholder = text.seedRandom;
   $('filter').placeholder = text.filter;
@@ -917,7 +933,38 @@
     return [col, row, row * n + col];
   };
   // A sketch has no list to mirror the choice: its biomes are not chosen.
-  map.addEventListener('click', event => { if (world && !world.sketch) choose(world.biomes[world.biomeAt[pointUnder(event)[2]]].id); });
+  // The flat map moves like the relief does: the wheel comes closer to the point under it, a press that
+  // travels carries the map. A press that stays in place is still the click that chooses a biome.
+  const flat = $('flat'), look = { k: 1, x: 0, y: 0 };
+  function showLook() {
+    look.x = clamp(look.x, 1 - look.k, 0); look.y = clamp(look.y, 1 - look.k, 0);
+    for (const key in look) flat.style.setProperty(`--${key}`, look[key]);
+  }
+  map.addEventListener('wheel', event => {
+    event.preventDefault();
+    const box = flat.getBoundingClientRect();
+    const px = (event.clientX - box.left) / box.width, py = (event.clientY - box.top) / box.height;
+    const k = clamp(look.k * (event.deltaY < 0 ? 1.25 : 0.8), 1, 16);
+    look.x = px - (px - look.x) * k / look.k; look.y = py - (py - look.y) * k / look.k; look.k = k;
+    showLook();
+  }, { passive: false });
+  let carry = null, carried = false;
+  map.addEventListener('pointerdown', event => {
+    if (event.button === 0) { carry = { x: event.clientX, y: event.clientY, lookX: look.x, lookY: look.y }; carried = false; }
+  });
+  map.addEventListener('pointermove', event => {
+    if (!carry) return;
+    const dx = event.clientX - carry.x, dy = event.clientY - carry.y;
+    // A hand is never still: a few pixels are not yet a move.
+    if (!carried && Math.hypot(dx, dy) < 4) return;
+    if (!carried) { carried = true; map.setPointerCapture(event.pointerId); map.style.cursor = 'grabbing'; }
+    const box = flat.getBoundingClientRect();
+    look.x = carry.lookX + dx / box.width; look.y = carry.lookY + dy / box.height;
+    showLook();
+  });
+  for (const end of ['pointerup', 'pointercancel']) map.addEventListener(end, () => { carry = null; map.style.cursor = ''; });
+
+  map.addEventListener('click', event => { if (carried) return; if (world && !world.sketch) choose(world.biomes[world.biomeAt[pointUnder(event)[2]]].id); });
   map.addEventListener('mousemove', event => {
     if (!world) return;
     const [col, row, i] = pointUnder(event);
