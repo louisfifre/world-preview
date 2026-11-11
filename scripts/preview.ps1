@@ -141,7 +141,7 @@ $world = 'seed-' + ($Seed -replace '[^A-Za-z0-9_-]', '_')
 Remove-Item (Join-Path $Out 'preview.json'), (Join-Path $Out 'coarse.json') -ErrorAction SilentlyContinue
 $watch = [Diagnostics.Stopwatch]::StartNew()
 $null = Invoke-Java $Dir (Join-Path $Dir 'last-run.log') @('-Xmx4G', '-XX:+UseZGC', "-Dworldpreview.out=$Out",
-    "-Dworldpreview.samples=$Samples", "-Dworldpreview.step=$Step", '-jar', $launcher, 'nogui')
+    "-Dworldpreview.samples=$Samples", "-Dworldpreview.step=$Step", '-jar', $launcher, 'nogui') -Background
 
 if (-not (Test-Path (Join-Path $Out 'preview.json'))) {
     throw "The preview server ended without a result. See $(Join-Path $Dir 'last-run.log')"
