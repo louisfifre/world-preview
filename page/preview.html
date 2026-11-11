@@ -119,6 +119,12 @@
   .setting small { grid-column: 1 / -1; }
   /* The button always says what it does. When there is nothing to compute it turns to grey
      stone, and the line above it says why. Its texture is drawn by the script, 16 texels high. */
+  /* The steps of a run, in one place: done with the second it ended at, under way, and a hairline
+     that fills as the wait goes. They stay after the run, to see where the time went. */
+  #steps { flex: none; display: flex; flex-direction: column; gap: 3px; font-size: 13px; }
+  .step { display: grid; grid-template-columns: 14px 1fr auto; gap: 6px; align-items: baseline; color: var(--muted); }
+  .step.now { color: var(--text); font-weight: 600; }
+  #steps .bar { height: 1px; margin: 5px 0 3px; background: linear-gradient(var(--text), var(--text)) 0 0 / calc(var(--share) * 100%) 100% no-repeat, var(--track); }
   #status { min-height: 18px; font-size: 13px; color: var(--muted); }
   #status.trouble { color: var(--warn); }
   #generate {
@@ -129,10 +135,12 @@
   #generate:hover:not(:disabled) { filter: brightness(1.12); }
   #generate:active:not(:disabled) { filter: brightness(0.9); }
   #generate:disabled { filter: grayscale(1) brightness(0.5); }
+  /* While a run is under way the same button stops it: stone, but lit. */
+  #generate.stop:not(:disabled) { filter: grayscale(1) brightness(0.85); }
 
   /* Middle: the map. Tabs, map, legend and readout hang off one square, so they stay one block. */
   #stage { flex: 1; min-height: 0; display: grid; place-items: start center; container-type: size; }
-  #frame { position: relative; margin-top: 40px; width: min(100cqw, 100cqh - 104px); aspect-ratio: 1; }
+  #frame { position: relative; margin-top: 40px; width: min(100cqw, 100cqh - 80px); aspect-ratio: 1; }
   #flat, #map, #relief, #grid { position: absolute; inset: 0; width: 100%; height: 100%; }
   #relief canvas { display: block; width: 100%; height: 100%; }
   /* The flat map may be looked at closer: --k is how many times, --x and --y where its corner went, in widths of the square. */
@@ -156,15 +164,12 @@
     filter: drop-shadow(0 0 1px #000) drop-shadow(0 0 1px #000);
   }
   #note { position: absolute; inset: 0; display: grid; place-items: center; padding: 40px; text-align: center; color: var(--muted); pointer-events: none; }
-  #frame.busy #note { color: var(--text); font-size: 16px; }
   /* While the sketch of a run is on the map, the figures and the list still describe the map before: they step back. */
   #numbers.stale { opacity: 0.3; transition: opacity 200ms; }
   #tabs { position: absolute; left: 0; right: 0; bottom: calc(100% + 12px); }
   #tabs .apart { margin-left: auto; }
-  #under { position: absolute; left: 0; right: 0; top: calc(100% + 12px); display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
-  #legend { display: flex; flex-wrap: wrap; gap: 4px 14px; min-height: 18px; }
-  #legend span { display: inline-flex; align-items: center; gap: 6px; }
-  #probe { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #under { position: absolute; left: 0; right: 0; top: calc(100% + 12px); font-size: 13px; }
+  #probe { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
   /* Right: the numbers. */
   .figures { display: grid; grid-template-columns: 1fr auto auto; gap: 5px 14px; align-items: baseline; }
@@ -191,7 +196,7 @@
   #pick button:hover { text-decoration: line-through; }
   #pick button.none { margin-left: 8px; text-decoration: underline; }
   /* A thin edge, so a white or pale swatch does not vanish on the light ground. */
-  .biome i, #legend i { width: 12px; height: 12px; border-radius: 2px; box-shadow: inset 0 0 0 1px rgb(128 128 128 / 0.35); }
+  .biome i { width: 12px; height: 12px; border-radius: 2px; box-shadow: inset 0 0 0 1px rgb(128 128 128 / 0.35); }
   .biome .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .biome .width { color: var(--muted); min-width: 8ch; text-align: right; }
   .biome .share { min-width: 6ch; text-align: right; }
@@ -218,6 +223,7 @@
       <div id="profiles" class="choice"></div>
     </div>
     <div id="settings" class="scroll"></div>
+    <div id="steps" hidden></div>
     <div id="status" role="status"></div>
     <button id="generate" data-text="generate"></button>
   </section>
@@ -232,9 +238,9 @@
         </div>
         <div id="relief" hidden></div>
         <div id="note"></div>
-        <div id="under">
-          <div id="legend" class="muted"></div>
+        <div id="under" class="choice">
           <div id="probe" class="num muted"></div>
+          <button id="export" class="action" data-text="export"></button>
         </div>
       </div>
     </div>
@@ -247,11 +253,11 @@
     </div>
     <div class="column" style="flex:1; gap:6px">
       <div>
-        <h2 data-text="biomes"></h2>
+        <h2 id="listTitle"></h2>
         <input type="text" id="filter" spellcheck="false">
         <small id="pick"></small>
       </div>
-      <div class="legend"><span></span><span data-text="colBiome"></span><span class="width" data-text="colWidth"></span><span class="share" data-text="colShare"></span></div>
+      <div class="legend"><span></span><span id="listColumn"></span><span class="width" data-text="colWidth"></span><span class="share" data-text="colShare"></span></div>
       <div id="biomes" class="scroll"></div>
     </div>
   </section>
@@ -267,22 +273,35 @@
     duration: s => s < 60 ? `${s} s` : `${Math.floor(s / 60)} min${s % 60 ? ` ${s % 60} s` : ''}`,
     generate: 'Generate preview',
     upToDate: 'The map shows these settings.',
-    running: (elapsed, about) => `Computing… ${elapsed} of about ${about}`,
-    sketch: step => `A sketch, one point every ${step} blocks, finer as the run goes. The figures and the list wait for the full map.`,
+    stop: 'Stop',
+    running: (elapsed, about) => `${elapsed} of about ${about}`,
+    steps: {
+      start: 'Starting the game',
+      sketch: step => `Sketch, every ${step} blocks`,
+      full: 'Full map and figures',
+      readable: 'The sketch on the map can be read already.',
+    },
+    stopped: 'Stopped. The map is the one from before.',
+    export: 'Export',
+    exportHint: 'Keeps the settings, the figures, and a picture of each view, flat and in 3D as it is looked at now, in a folder.',
+    exporting: 'Exporting…',
+    exported: folder => `Exported to ${folder}`,
+    exportFailed: 'The export failed.',
     figures: 'In figures',
     change: 'change',
     was: v => `before: ${v}`,
     same: '=',
     close: '≈',
     points: ' pt',
-    biomes: 'Biomes',
-    pickHint: 'Click biomes, here or on the map.',
-    pickedMany: count => `${count} biomes chosen`,
+    // What the list beside the map holds in each view: [its title, the name of its first column].
+    lists: { biomes: ['Biomes', 'biome'], flat: ['Ground', 'ground'], height: ['Heights', 'height'], temperature: ['Temperatures', 'climate'] },
+    heightBands: (sea, steps) => ['Under the sea', ...steps.map((top, i) => `${i ? steps[i - 1] : sea} to ${top}`), `Above ${steps.at(-1)}`],
+    pickHint: 'Click rows, here or on the map.',
+    pickedMany: count => `${count} chosen`,
     pickedShare: share => ` · ${share} of the area`,
     pickRemove: name => `Remove ${name}`,
     pickNone: 'Show all',
     filter: 'Filter by name…',
-    colBiome: 'biome',
     colWidth: 'typical width',
     colShare: 'share',
     groups: { biomes: 'Biome size and climate', relief: 'Relief', continents: 'Continents and oceans' },
@@ -313,7 +332,7 @@
     profileDefault: n => `Try ${n}`,
     views: { biomes: 'Biomes', flat: 'Flat', height: 'Relief', temperature: 'Temperature' },
     shapes: { flat2d: '2D', relief3d: '3D' },
-    done: s => `Preview ready in ${s} s.`,
+    done: wait => `Preview ready in ${wait}.`,
     failed: 'The run failed. Try again; if it fails again, look at last-run.log in the preview folder.',
     refused: 'Seed refused: it takes letters, digits, spaces and hyphens.',
     noPreview: 'No preview yet. Choose a seed and generate one.',
@@ -334,11 +353,9 @@
     goalFigures: ['flat', 'expanse', 'typical'],
     altitude: v => `height ${v}`,
     legend: {
-      flat: ['flat', 'slopes', 'water'],
-      altitude: 'height',
-      sea: 'sea',
-      temperature: ['frozen', 'cold', 'temperate', 'warm', 'scorching'],
-      water: 'water',
+      flat: ['Flat', 'Slopes', 'Water'],
+      temperature: ['Frozen', 'Cold', 'Temperate', 'Warm', 'Scorching'],
+      water: 'Water',
     },
   };
   const num = (v, digits = 0) => v.toLocaleString('en-US', { minimumFractionDigits: digits, maximumFractionDigits: digits });
@@ -411,6 +428,8 @@
   let shown = null;       // the seed, span and values the map on screen was made with
   let busy = false;
   let trouble = '';       // what went wrong; it stays until the next attempt
+  let said = '';          // how the last run ended, when it did not go wrong
+  let exporting = false;  // pictures are being taken: the map is drawn whole, whatever is chosen
   // Grid points per side, one every 16 blocks whatever the width, so the measures keep their meaning.
   let samples = 512;
   // Seconds a run takes, about: the server starts, then every point costs the same (measured on
@@ -435,7 +454,7 @@
       && Object.entries(inputs).every(([key, input]) => Math.abs(input.value - shown.values[key]) < 1e-9);
     $('generate').disabled = same;
     $('status').className = trouble ? 'trouble' : '';
-    $('status').textContent = trouble || (same ? text.upToDate : '');
+    $('status').textContent = trouble || said || (same ? text.upToDate : '');
   }
   const say = sentence => { trouble = sentence; showButton(); };
 
@@ -624,8 +643,11 @@
   let world = null;       // the current preview
   let view = 'biomes';
   let in3d = false;
-  // The biomes shown alone, by id: a choice lives through the next run, to follow a biome from one try to the other.
-  const chosen = new Set();
+  // What is shown alone in each view, by id: biomes, or bands of ground, height, temperature. A choice
+  // lives through the next run, to follow a biome from one try to the other.
+  const chosen = { biomes: new Set(), flat: new Set(), height: new Set(), temperature: new Set() };
+  // Where one band of height ends and the next starts, above the sea.
+  const heightSteps = [100, 150, 200, 250];
   // The figures of the run before this one. Kept by the browser, so a reload does not lose them.
   let before = null;
   try { before = JSON.parse(localStorage.getItem('preview.before')); } catch { }
@@ -750,6 +772,43 @@
     };
   }
 
+  // The list beside the map holds what the view shows: its biomes, or the bands its colours stand for.
+  // Each gives, per point, the row it belongs to, and per row an id, a name, a colour, a size.
+  function listOf(kind) {
+    if (kind === 'biomes') return { at: world.biomeAt, ids: world.biomes.map(b => b.id), names: world.biomes.map(b => pretty(b.id)), colours: world.colours, cells: world.cells, widths: world.widths };
+    // Nothing is measured on a sketch.
+    if (world.sketch) return null;
+    world.lists ??= {};
+    return world.lists[kind] ??= bands(kind);
+  }
+  function bands(kind) {
+    const n = world.samples, total = n * n, sea = world.seaLevel, h = world.heights, at = new Uint8Array(total);
+    let names, colours;
+    if (kind === 'height') {
+      for (let i = 0; i < total; i++) {
+        let band = 0;
+        if (h[i] >= sea) { band = 1; while (band <= heightSteps.length && h[i] >= heightSteps[band - 1]) band++; }
+        at[i] = band;
+      }
+      names = text.heightBands(sea, heightSteps);
+      // Each band takes the colour of its middle.
+      colours = [heightColour(sea - 30, sea), ...[sea, ...heightSteps].map((low, i) => heightColour(i < heightSteps.length ? (low + heightSteps[i]) / 2 : low + 30, sea))];
+    } else if (kind === 'temperature') {
+      // Five classes over the game's range, from -0.7 to 2; water apart, as on the map.
+      const band = world.biomes.map(b => Math.round(clamp((b.temperature + 0.7) / 2.7, 0, 1) * 4));
+      for (let i = 0; i < total; i++) at[i] = h[i] < sea ? 5 : band[world.biomeAt[i]];
+      names = [...text.legend.temperature, text.legend.water];
+      colours = [...text.legend.temperature.map((_, i) => temperatureColour(-0.7 + i * 2.7 / 4)), quietWater];
+    } else {
+      for (let i = 0; i < total; i++) at[i] = h[i] < sea ? 2 : world.flatAt[i] ? 0 : 1;
+      names = text.legend.flat;
+      colours = [flatColours.flat, flatColours.steep, flatColours.sea];
+    }
+    const cells = new Float64Array(names.length), weighted = new Float64Array(names.length);
+    zones(at, n, (band, size) => { cells[band] += size; weighted[band] += size * size; });
+    return { at, ids: names.map((_, i) => `${i}`), names, colours, cells, widths: Array.from(cells, (c, b) => c ? Math.sqrt(weighted[b] / c) * world.step : 0) };
+  }
+
   // ---------- drawing ----------
 
   const map = $('map');
@@ -766,8 +825,9 @@
     const stepBack = scheme.matches ? [16, 40] : [200, 226];
     // The line between two zones that stepped back: a little towards the text's side of the ground.
     const fadedLine = scheme.matches ? 1.3 : 0.92;
-    // A chosen biome this world does not have dims nothing.
-    const lit = world.biomes.map(b => chosen.has(b.id)), choosing = lit.includes(true);
+    // The choice of this view only. A chosen row this world does not have dims nothing.
+    const list = listOf(view), rowAt = list?.at;
+    const lit = list ? list.ids.map(id => chosen[view].has(id)) : [], choosing = !exporting && lit.includes(true);
     for (let i = 0; i < total; i++) {
       const biome = at[i], y = h[i], x = i % n, water = y < sea;
       // Light from the north-west: slopes facing it are brighter. Water stays flat.
@@ -781,7 +841,7 @@
       const right = x < n - 1 ? i + 1 : i, below = i < total - n ? i + n : i;
       const border = (at[right] !== biome && !(water && h[right] < sea)) || (at[below] !== biome && !(water && h[below] < sea));
       let c, shade = 1;
-      if (choosing && !lit[biome]) {
+      if (choosing && !lit[rowAt[i]]) {
         const g = stepBack[water ? 0 : 1];
         c = [g, g, g]; shade = clamp(1 + slope * 0.004, 0.9, 1.1);
         // What stepped back keeps a trace of its zones, so a chosen biome is still read among its neighbours.
@@ -806,25 +866,7 @@
       px[i * 4] = c[0] * shade; px[i * 4 + 1] = c[1] * shade; px[i * 4 + 2] = c[2] * shade; px[i * 4 + 3] = 255;
     }
     pen.putImageData(image, 0, 0);
-    showLegend();
-    if (in3d) drawing3d = refresh3d();
-  }
-
-  // What the colours of this view mean. The biome view needs none: the list beside it is its legend.
-  // A chip without a colour is a plain word.
-  function showLegend() {
-    const sea = world.seaLevel;
-    const chips =
-      view === 'flat' ? [[flatColours.flat, text.legend.flat[0]], [flatColours.steep, text.legend.flat[1]], [flatColours.sea, text.legend.flat[2]]]
-      : view === 'height' ? [[null, text.legend.altitude], [heightColour(sea - 30, sea), text.legend.sea], ...[sea, 100, 150, 200, 250, 300].map(y => [heightColour(y, sea), `${y}`])]
-      : view === 'temperature' ? [...text.legend.temperature.map((name, i) => [temperatureColour(-0.7 + i * 2.7 / 4), name]), [quietWater, text.legend.water]]
-      : [];
-    $('legend').replaceChildren(...chips.map(([colour, label]) => {
-      const chip = document.createElement('span');
-      if (colour) { chip.innerHTML = '<i></i>'; chip.firstChild.style.background = css(colour); }
-      chip.append(label);
-      return chip;
-    }));
+    if (in3d && !exporting) drawing3d = refresh3d();
   }
 
   function showFigures() {
@@ -864,66 +906,71 @@
     $('figures').replaceChildren(...rows);
   }
 
-  function showBiomes() {
-    const total = world.samples ** 2;
-    const order = world.biomes.map((_, i) => i).sort((a, b) => world.cells[b] - world.cells[a]);
+  function showList() {
+    const list = listOf(view), total = world.samples ** 2;
+    [$('listTitle').textContent, $('listColumn').textContent] = text.lists[view];
+    $('filter').hidden = view !== 'biomes';
+    // Biomes by share. Bands keep their own order, lowest or coldest first; one this world does not have is left out.
+    const order = list.ids.map((_, i) => i).filter(i => list.cells[i]);
+    if (view === 'biomes') order.sort((a, b) => list.cells[b] - list.cells[a]);
     $('biomes').replaceChildren(...order.map(i => {
       const row = document.createElement('button');
       row.className = 'biome num';
-      row.dataset.id = world.biomes[i].id;
+      row.dataset.id = list.ids[i];
       row.innerHTML = '<i></i><span class="name"></span><span class="width"></span><span class="share"></span>';
-      row.children[0].style.background = css(world.colours[i]);
-      row.children[1].textContent = pretty(world.biomes[i].id);
-      row.title = world.biomes[i].id;
-      row.children[2].textContent = blocks(world.widths[i]);
-      row.children[3].textContent = percent(100 * world.cells[i] / total);
-      row.addEventListener('click', () => choose(world.biomes[i].id));
+      row.children[0].style.background = css(list.colours[i]);
+      row.children[1].textContent = list.names[i];
+      if (view === 'biomes') row.title = list.ids[i];
+      row.children[2].textContent = blocks(list.widths[i]);
+      row.children[3].textContent = percent(100 * list.cells[i] / total);
+      row.addEventListener('click', () => choose(list.ids[i]));
       return row;
     }));
     showChoice();
   }
 
-  // Each click adds a biome to the choice or takes it out; the map shows the chosen ones alone.
+  // Each click adds a row to the choice or takes it out; the map shows the chosen ones alone.
   function choose(id) {
-    if (!chosen.delete(id)) chosen.add(id);
+    if (!chosen[view].delete(id)) chosen[view].add(id);
     showChoice(); paint();
   }
   // Marks the rows, hides those the filter leaves out, and says what the choice weighs.
   // The rows are not rebuilt, so the list stays where it was scrolled.
   function showChoice() {
-    const asked = $('filter').value.trim().toLowerCase();
-    const names = [];
-    let count = 0, cells = 0;
-    world.biomes.forEach((b, i) => { if (chosen.has(b.id)) { count++; cells += world.cells[i]; names.push(b.id); } });
-    $('biomes').classList.toggle('choosing', count > 0);
+    const list = listOf(view), picked = chosen[view];
+    const asked = view === 'biomes' ? $('filter').value.trim().toLowerCase() : '';
+    const rows = [];
+    let cells = 0;
+    list.ids.forEach((id, i) => { if (picked.has(id) && list.cells[i]) { cells += list.cells[i]; rows.push(i); } });
+    $('biomes').classList.toggle('choosing', rows.length > 0);
     for (const row of $('biomes').children) {
-      const on = chosen.has(row.dataset.id);
+      const on = picked.has(row.dataset.id);
       row.setAttribute('aria-pressed', on);
       // The filter reads the id too, so the name of a mod finds its biomes. A chosen biome stays in sight.
       row.hidden = !on && !!asked && !row.dataset.id.replaceAll('_', ' ').includes(asked);
     }
-    if (!count) { $('pick').replaceChildren(text.pickHint); return; }
+    if (!rows.length) { $('pick').replaceChildren(text.pickHint); return; }
     const none = document.createElement('button');
     none.textContent = text.pickNone;
-    none.addEventListener('click', () => { chosen.clear(); showChoice(); paint(); });
+    none.addEventListener('click', () => { picked.clear(); showChoice(); paint(); });
     none.className = 'none';
-    // Up to three, the choice is named, since its rows may be far apart in the list. A name takes its biome out.
-    const parts = count > 3 ? [text.pickedMany(count)] : names.flatMap((id, at) => {
+    // Up to three, the choice is named, since its rows may be far apart in the list. A name takes its row out.
+    const parts = rows.length > 3 ? [text.pickedMany(rows.length)] : rows.flatMap((i, at) => {
       const name = document.createElement('button');
-      name.textContent = pretty(id);
-      name.title = text.pickRemove(pretty(id));
-      name.addEventListener('click', () => choose(id));
+      name.textContent = list.names[i];
+      name.title = text.pickRemove(list.names[i]);
+      name.addEventListener('click', () => choose(list.ids[i]));
       return at ? [', ', name] : [name];
     });
     $('pick').replaceChildren(...parts, text.pickedShare(percent(100 * cells / world.samples ** 2)), none);
   }
-  $('filter').addEventListener('input', () => { if (world) showChoice(); });
+  $('filter').addEventListener('input', () => { if (world && !world.sketch) showChoice(); });
 
   const restProbe = () => {
-    if (world) $('probe').textContent = world.sketch ? text.sketch(world.step) : text.area(num(world.samples * world.step), num(world.samples * world.step / 8));
+    if (world) $('probe').textContent = text.area(num(world.samples * world.step), num(world.samples * world.step / 8));
   };
   function showWorld() {
-    showTabs(); showFigures(); showBiomes(); restProbe(); showButton();
+    showTabs(); showFigures(); showList(); restProbe(); showButton();
   }
 
   const pointUnder = event => {
@@ -932,7 +979,7 @@
     const row = Math.min(n - 1, Math.floor((event.clientY - box.top) / box.height * n));
     return [col, row, row * n + col];
   };
-  // A sketch has no list to mirror the choice: its biomes are not chosen.
+
   // The flat map moves like the relief does: the wheel comes closer to the point under it, a press that
   // travels carries the map. A press that stays in place is still the click that chooses a biome.
   const flat = $('flat'), look = { k: 1, x: 0, y: 0 };
@@ -964,7 +1011,12 @@
   });
   for (const end of ['pointerup', 'pointercancel']) map.addEventListener(end, () => { carry = null; map.style.cursor = ''; });
 
-  map.addEventListener('click', event => { if (carried) return; if (world && !world.sketch) choose(world.biomes[world.biomeAt[pointUnder(event)[2]]].id); });
+  // A sketch has no list to mirror the choice: nothing is chosen on it.
+  map.addEventListener('click', event => {
+    if (carried || !world || world.sketch) return;
+    const list = listOf(view);
+    choose(list.ids[list.at[pointUnder(event)[2]]]);
+  });
   map.addEventListener('mousemove', event => {
     if (!world) return;
     const [col, row, i] = pointUnder(event);
@@ -1001,7 +1053,15 @@
           renderer.render(scene, camera);
           requestAnimationFrame(draw);
         };
-        scene3d = { THREE, scene, camera, controls, draw, land: null, water: null, running: false, width: 0 };
+        // A picture of the relief as it is looked at, whether the view is on screen or not. Taken in the
+        // same breath as the drawing, before the browser clears what was drawn.
+        const shot = size => {
+          renderer.setSize(size / devicePixelRatio, size / devicePixelRatio, false);
+          controls.update();
+          renderer.render(scene, camera);
+          return new Promise(resolve => renderer.domElement.toBlob(resolve));
+        };
+        scene3d = { THREE, scene, camera, controls, draw, shot, land: null, water: null, running: false, width: 0 };
       }
       const { THREE, scene } = scene3d;
       scene.background = new THREE.Color(groundColour());
@@ -1056,36 +1116,64 @@
     tab.addEventListener('click', () => {
       if (key in text.shapes) in3d = key === 'relief3d'; else view = key;
       showTabs();
+      if (world && !world.sketch && !(key in text.shapes)) showList();
     });
     $('tabs').append(tab);
   }
 
   // ---------- generating ----------
 
-  // Waits for a run with the page: the clock, the sketches, then the map or the trouble. `ended` resolves
-  // when the run is over and throws what went wrong. The run is either the one this page asks for, or one
-  // found under way on opening, `already` seconds old.
+  // The steps of a run, where the button is: those done with the second each ended at, the one under
+  // way with the clock, a hairline that fills with the share of the wait gone by, and a word if any.
+  function showSteps(done, current, clock, share, word) {
+    const row = (mark, label, seconds, now) => {
+      const line = document.createElement('div');
+      line.className = now ? 'step now' : 'step';
+      line.innerHTML = '<span></span><span></span><span class="num"></span>';
+      line.children[0].textContent = mark;
+      line.children[1].textContent = label;
+      line.children[2].textContent = text.duration(seconds);
+      return line;
+    };
+    const bar = document.createElement('div');
+    bar.className = 'bar';
+    bar.style.setProperty('--share', share);
+    const rows = [...done.map(([label, seconds]) => row('✓', label, seconds)), ...(current ? [row('›', current, clock, true)] : []), bar];
+    if (word) { const line = document.createElement('small'); line.textContent = word; rows.push(line); }
+    $('steps').replaceChildren(...rows);
+    $('steps').hidden = false;
+  }
+
+  // Waits for a run with the page: the steps, the sketches, then the map or the trouble. `ended` resolves
+  // when the run is over, with `stopped` if someone stopped it, and throws what went wrong. The run is
+  // either the one this page asks for, or one found under way on opening, `already` seconds old.
   async function follow(ended, already = 0) {
-    trouble = '';
+    trouble = said = '';
     busy = true;
-    $('generate').disabled = true;
+    // While the run is under way, the button stops it.
+    $('generate').disabled = false;
+    $('generate').textContent = text.stop;
+    $('generate').classList.add('stop');
     $('status').className = '';
     // The map on screen is about to be replaced: it steps back while the new one is computed.
     $('frame').classList.add('busy');
     const started = Date.now() - already * 1000;
     const seconds =() => Math.round((Date.now() - started) / 1000);
-    const wait = text.duration(about(samples));
-    // Said twice: above the button, and on the dimmed map, where the eye is. Once the sketch is on
-    // the map, only above the button.
+    const expected = about(samples), wait = text.duration(expected);
+    // The game starts, sketches land, each finer than the one before, then the full map. How many
+    // sketches depends on the area, so each is listed as it lands. Only these landings are known: within
+    // a step, the hairline follows the clock against the wait this machine took last time.
+    const done = [];
+    let stage = text.steps.start;
+    const share = () => Math.min(0.97, seconds() / expected);
     const tick = () => {
+      showSteps(done, stage, seconds(), share(), world?.sketch ? text.steps.readable : '');
       $('status').textContent = text.running(text.duration(seconds()), wait);
-      if (!world?.sketch) $('note').textContent = $('status').textContent;
     };
     const clock = setInterval(tick, 1000);
     tick();
-    // While the server computes, the sketches it writes first take the map's place, each finer than
-    // the one before. The figures and the list stay those of the map before, stepped back, until the
-    // full map is there.
+    // The sketches take the map's place. The figures and the list stay those of the map before,
+    // stepped back, until the full map is there.
     const old = world;
     let waiting = true, poll = 0;
     const lookForSketch = async () => {
@@ -1094,50 +1182,115 @@
       poll = setTimeout(lookForSketch, 1000);
       if (!sketch) return;
       world = sketch;
+      if (stage === text.steps.start) { done.push([stage, seconds()]); stage = text.steps.full; }
+      done.push([text.steps.sketch(sketch.step), seconds()]);
       $('frame').classList.remove('busy');
       $('numbers').classList.add('stale');
       $('numbers').inert = true;
-      showTabs(); restProbe();
+      showTabs(); restProbe(); tick();
     };
     // The server removes the sketch of the run before as it takes this one: ask a little later.
     poll = setTimeout(lookForSketch, 1000);
-    let done = false;
+    let finished = false, stopped = false;
     try {
-      await ended();
+      stopped = !!(await ended())?.stopped;
       waiting = false;
-      if (old) {
-        before = old.figures;
-        try { localStorage.setItem('preview.before', JSON.stringify(before)); } catch { }
+      if (!stopped) {
+        if (old) {
+          before = old.figures;
+          try { localStorage.setItem('preview.before', JSON.stringify(before)); } catch { }
+        }
+        world = await loadWorld();
+        finished = true;
       }
-      world = await loadWorld();
-      done = true;
     } catch (e) { trouble = e instanceof TypeError ? text.serverGone : e.message || text.failed; }
     waiting = false;
     clearTimeout(poll);
     clearInterval(clock);
     const sketched = !!world?.sketch;
-    // A failed run leaves the map it found.
-    if (!done) world = old;
+    // A run that failed or was stopped leaves the map it found.
+    if (!finished) world = old;
     $('note').textContent = world ? '' : text.noPreview;
     busy = false;
+    $('generate').textContent = text.generate;
+    $('generate').classList.remove('stop');
     $('frame').classList.remove('busy');
     $('numbers').classList.remove('stale');
     $('numbers').inert = false;
-    if (done) { learnPace(samples, seconds()); showSpan(); showWorld(); $('probe').textContent = text.done(seconds()); }
-    else if (sketched) { if (!world) map.width = map.height = 0; showTabs(); restProbe(); }
+    if (finished) {
+      done.push([stage, seconds()]);
+      said = text.done(text.duration(seconds()));
+      learnPace(samples, seconds()); showSpan(); showWorld();
+    } else {
+      if (stopped) said = text.stopped;
+      if (sketched) { if (!world) map.width = map.height = 0; showTabs(); restProbe(); }
+    }
+    // The steps stay, to see where the time went; the one that did not end is left out.
+    showSteps(done, '', 0, finished ? 1 : share(), '');
     showButton();
   }
 
   $('generate').addEventListener('click', () => {
+    if (busy) {
+      // One press is enough: the run ends a moment later, and the wait for it says so.
+      $('generate').disabled = true;
+      fetch('/api/preview/stop', { method: 'POST' }).catch(() => { });
+      return;
+    }
     const tectonic = Object.fromEntries(Object.entries(inputs).map(([key, input]) => [key, +input.value]));
     // An empty seed is one drawn here, so the run can be named and done again.
     const seed = $('seed').value.trim() || String(crypto.getRandomValues(new Uint32Array(1))[0] * 2 ** 20 + crypto.getRandomValues(new Uint32Array(1))[0] % 2 ** 20);
     follow(async () => {
       const reply = await fetch('/api/preview', { method: 'POST', body: JSON.stringify({ seed, samples, tectonic }) });
       if (!reply.ok) throw new Error(reply.status === 400 ? text.refused : text.failed);
+      return reply.json().catch(() => null);
     });
   });
 
+  // ---------- export ----------
+
+  // Keeps a try: its settings and figures in one file, and a picture of each view, flat and in 3D, in a
+  // folder of the preview's own. The pictures show the whole map, whatever is chosen on screen; the 3D
+  // ones are taken from where the relief is looked at now.
+  $('export').title = text.exportHint;
+  $('export').addEventListener('click', async () => {
+    if (!world || world.sketch || busy || exporting) return;
+    const stamp = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 19).replace('T', '_').replaceAll(':', '-');
+    const name = `${shown?.seed ?? 'preview'}_${stamp}`.replace(/[^\w-]/g, '_');
+    const send = async (file, body) => {
+      const reply = await fetch(`/api/preview/export/${encodeURIComponent(name)}/${file}`, { method: 'POST', body });
+      if (!reply.ok) throw new Error(text.exportFailed);
+      return reply.json();
+    };
+    const was = view;
+    exporting = true;
+    $('probe').textContent = text.exporting;
+    let word;
+    try {
+      const total = world.samples ** 2, lists = {};
+      for (const kind of Object.keys(text.views)) {
+        view = kind;
+        paint();
+        await send(`${kind}.png`, await new Promise(resolve => map.toBlob(resolve)));
+        await refresh3d();
+        if (scene3d) await send(`${kind}-3d.png`, await scene3d.shot(1600));
+        const list = listOf(kind);
+        lists[kind] = list.ids.map((id, i) => ({ id, name: list.names[i], share: 100 * list.cells[i] / total, width: Math.round(list.widths[i]) }))
+          .filter(row => row.share).sort((a, b) => kind === 'biomes' ? b.share - a.share : 0);
+      }
+      const sameSpan = before && before.span === world.figures.span;
+      const { folder } = await send('export.json', JSON.stringify({
+        seed: shown?.seed, blocks: world.samples * world.step, seaLevel: world.seaLevel,
+        tectonic: shown?.values, pack: packValues,
+        figures: world.figures, figuresBefore: sameSpan ? before : null, lists,
+      }, null, 2));
+      word = text.exported(folder);
+    } catch (e) { word = e.message || text.exportFailed; }
+    view = was;
+    exporting = false;
+    paint();
+    $('probe').textContent = word;
+  });
   world = await loadWorld();
   if (world) showWorld(); else showTabs();
   showButton();
@@ -1157,7 +1310,7 @@
         const now = await fetch('/api/preview/run').then(r => r.json());
         if (now.running) continue;
         if (now.error) throw new Error(text.failed);
-        return;
+        return now;
       }
     }, running.seconds);
   }
@@ -1166,8 +1319,8 @@
   // The address can ask for a state, so a capture gets any view without a click:
   // /?view=height,relief3d&biome=minecraft:desert,minecraft:badlands
   const asked = new URLSearchParams(location.search);
-  for (const id of (asked.get('biome') || '').split(',')) if (id) chosen.add(id);
-  if (world && chosen.size) { showChoice(); paint(); }
+  for (const id of (asked.get('biome') || '').split(',')) if (id) chosen.biomes.add(id);
+  if (world && chosen.biomes.size) { showChoice(); paint(); }
   for (const key of (asked.get('view') || '').split(',')) $('tabs').querySelector(`[data-view="${key}"]`)?.click();
   // Tells a capture that everything asked for is drawn (see scripts/capture.ps1).
   await drawing3d;
