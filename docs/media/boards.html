@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Boards</title>
+<!--
+  The illustrations of the README, composed from real pictures of the pages.
+  scripts/boards.ps1 takes those pictures (the "pieces"), then opens this file once per board,
+  boards.html?board=hero, and saves what it shows as docs/media/board-<name>.png.
+  One board is 1280 x 640 here and is saved twice as fine.
+-->
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: #000; }
+  body { width: 1280px; height: 640px; overflow: hidden; color: #ececec; font: 16px/1.4 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; }
+  section { position: relative; width: 1280px; height: 640px; overflow: hidden; display: none; }
+  section.on { display: block; }
+  img { display: block; }
+  h1 { margin: 0; font: 600 64px/1 "Segoe UI Variable Display", "Segoe UI", sans-serif; letter-spacing: -0.02em; }
+  h2 { margin: 0 0 10px; font: 600 30px/1.15 "Segoe UI Variable Display", "Segoe UI", sans-serif; letter-spacing: -0.01em; }
+  p { margin: 0; color: #a9a9a9; }
+  .lead { font-size: 21px; line-height: 1.4; color: #c9c9c9; }
+  .quiet { font-size: 14px; color: #7d7d7d; }
+  .words { position: absolute; left: 72px; width: 420px; }
+  .mid { top: 50%; transform: translateY(-50%); }
+  .piece { position: absolute; }
+  /* A picture that leaves the board by an edge fades into the ground on the side of the words. */
+  .fade-left { -webkit-mask-image: linear-gradient(to right, transparent, #000 30%); mask-image: linear-gradient(to right, transparent, #000 30%); }
+  .fade-down { -webkit-mask-image: linear-gradient(to bottom, #000 70%, transparent); mask-image: linear-gradient(to bottom, #000 70%, transparent); }
+  .cut { overflow: hidden; }
+  .line { outline: 1px solid #2a2a2a; }
+</style>
+</head>
+<body>
+
+<!-- The world, in relief, and what the tool is. -->
+<section data-board="hero">
+  <div class="piece cut fade-left" style="left: 420px; top: 0; width: 860px; height: 640px">
+    <img src="../../run/captures/pieces/3d-relief.png" style="width: 980px; margin: -210px 0 0 -40px">
+  </div>
+  <div class="words mid">
+    <svg width="56" height="56" viewBox="0 0 32 32" style="margin-bottom: 26px"><path fill="#7fb850" d="M16 2l14 7-14 7L2 9z"/><path fill="#8b6344" d="M2 9l14 7v14L2 23z"/><path fill="#6b4b33" d="M30 9l-14 7v14l14-7z"/></svg>
+    <h1>World preview</h1>
+    <p class="lead" style="margin-top: 22px">See the world a seed and its terrain settings give, before anyone plays in it. The game's own generator: a first sketch in about 11 seconds, the map in about 23.</p>
+    <p class="quiet" style="margin-top: 26px">Biomes · Flat land · Relief · Temperature · 3D</p>
+  </div>
+</section>
+
+<!-- The whole window. -->
+<section data-board="window">
+  <img class="piece line" src="../../run/captures/pieces/page.png" style="left: 96px; top: 56px; width: 1088px">
+</section>
+
+<!-- Four readings of the same ground. -->
+<section data-board="views">
+  <div class="words" style="top: 64px; width: 900px">
+    <h2>Four readings of the same ground</h2>
+    <p>Biomes, flat land, relief, temperature. Each one can be draped over the real heights.</p>
+  </div>
+  <img class="piece" src="../../run/captures/pieces/map-biomes.png" style="left: 72px; top: 206px; width: 272px">
+  <img class="piece" src="../../run/captures/pieces/map-flat.png" style="left: 360px; top: 206px; width: 272px">
+  <img class="piece" src="../../run/captures/pieces/map-relief.png" style="left: 648px; top: 206px; width: 272px">
+  <img class="piece" src="../../run/captures/pieces/map-temperature.png" style="left: 936px; top: 206px; width: 272px">
+  <p class="quiet piece" style="left: 72px; top: 496px">Biomes</p>
+  <p class="quiet piece" style="left: 360px; top: 496px">Flat</p>
+  <p class="quiet piece" style="left: 648px; top: 496px">Relief</p>
+  <p class="quiet piece" style="left: 936px; top: 496px">Temperature</p>
+</section>
+
+<!-- Flat land, measured: the figures, large, beside the map that draws them. -->
+<section data-board="measure">
+  <div class="words" style="top: 64px">
+    <h2>Flat land, measured</h2>
+    <p>Move a slider, run again: the figures say what changed since the run before.</p>
+  </div>
+  <img class="piece" src="../../run/captures/pieces/figures.png" style="left: 56px; top: 250px; width: 470px">
+  <div class="piece cut" style="left: 600px; top: 0; width: 680px; height: 640px">
+    <img src="../../run/captures/pieces/map-flat.png" style="width: 820px; margin: -90px 0 0 0">
+  </div>
+</section>
+
+<!-- A few biomes alone. -->
+<section data-board="biomes">
+  <div class="piece cut" style="left: 0; top: 0; width: 700px; height: 640px">
+    <img src="../../run/captures/pieces/map-chosen.png" style="width: 760px; margin: -60px 0 0 -30px">
+  </div>
+  <div class="words" style="left: 772px; top: 64px">
+    <h2>A few biomes alone</h2>
+    <p>Click them in the list or on the map. Their typical width and their share of the area sit beside each name.</p>
+  </div>
+  <div class="piece cut fade-down" style="left: 756px; top: 232px; width: 470px; height: 408px">
+    <img src="../../run/captures/pieces/biome-list.png" style="width: 470px">
+  </div>
+</section>
+
+<!-- The relief, with the colours of the biomes. -->
+<section data-board="relief">
+  <img class="piece" src="../../run/captures/pieces/3d-biomes.png" style="left: 0; top: -360px; width: 1280px">
+</section>
+
+<script>
+  // Shows the board the address asks for, and tells the capture script once its pictures are drawn.
+  const board = document.querySelector(`[data-board="${new URLSearchParams(location.search).get('board')}"]`);
+  if (board) board.classList.add('on');
+  Promise.all([...document.images].filter(i => i.closest('.on')).map(i => i.decode().catch(() => {})))
+    .then(() => { document.documentElement.dataset.ready = '1'; });
+</script>
+</body>
+</html>
