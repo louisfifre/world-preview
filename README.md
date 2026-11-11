@@ -45,8 +45,20 @@ Nothing to install for whoever already plays Minecraft 26.3 with Fabric mods on 
 ### The simple way
 
 1. Download `world-preview-<version>.zip` from the [releases](../../releases) and unzip it anywhere.
-2. Double-click `World Preview.cmd`. The first time, a window asks for your game folder, the one that holds `mods` and `config`. In Prism Launcher: right-click the instance, then Folder. With the official launcher it is `%APPDATA%\.minecraft` unless the profile names another. An instance's folder works too: the game folder is found inside it.
-3. Accept the Minecraft EULA for the preview's own server, once (see below).
+2. Double-click `World Preview.cmd`. If Windows warns about a file from the Internet, choose to run it anyway. The first time, a window asks for your game folder, the one that holds `mods` and `config`: go into it, then click Open.
+   - With the official launcher it is `%APPDATA%\.minecraft`, unless the profile names another: paste that into the address bar at the top of the window and press Enter.
+   - In Prism Launcher, right-click the instance, then Folder: the address of the folder that opens is the one to paste. An instance's folder works too, the game folder is found inside it.
+   - Or skip the window: drag the game folder and drop it on `World Preview.cmd`.
+3. The page opens. Ask for a first map: it stops at once with a sentence about the Minecraft EULA, which is accepted once, by hand (see just below). Then ask again.
+
+#### The Minecraft EULA, once
+
+The preview runs a Minecraft server of its own on your machine, and Minecraft asks whoever runs a server to accept its [EULA](https://aka.ms/MinecraftEULA). No script does it for you:
+
+1. Read the EULA. If you accept it, open the unzipped folder, then `run`, then `preview` (they exist once a first map has been asked for).
+2. Open Notepad, type the single line `eula=true`, and save it there under the name `eula.txt`. In Notepad's save window, set "Save as type" to "All files", or the file ends up named `eula.txt.txt` and is not seen.
+
+The sentence on the page gives the full path of the file it looks for.
 
 The page opens as a window of its own, and an icon sits in the notification area while it runs: amber while a map is computed, a notification when it is ready or has failed, and a menu to reopen the window or to quit. Everything stops by itself about 90 seconds after the window closes.
 
@@ -68,9 +80,7 @@ scripts/preview.ps1 -Pack D:\path\to\my-pack -Seed cap-1 -Tectonic @{ vertical_s
 
 The results land in `<Dir>\out`. `-Samples` goes from 256 to 2048 grid points per side (4096 to 32768 blocks).
 
-### The Minecraft EULA
-
-The preview runs a Minecraft server, so its work folder needs the [Minecraft EULA](https://aka.ms/MinecraftEULA) accepted. That is the decision of whoever owns the folder: read the EULA, then write the line `eula=true` in `<Dir>\eula.txt` yourself. No script writes it. Until then a run stops at once with a sentence saying where the file goes.
+With another work folder (`-Dir`), the EULA is accepted in that folder: the line `eula=true` in `<Dir>\eula.txt`, written by whoever owns the folder. Until then a run stops at once with a sentence saying where the file goes.
 
 ## Timings
 
