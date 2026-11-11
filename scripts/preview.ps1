@@ -65,14 +65,18 @@ if (-not ((Test-Path $eula) -and ((Get-Content $eula -Raw) -match '(?m)^eula=tru
     throw "EULA: the preview server needs the Minecraft EULA accepted in its own folder. Read https://aka.ms/MinecraftEULA, then write the line eula=true in $eula"
 }
 
-# 1. The mod jar, rebuilt only when its sources are newer.
+# 1. The mod jar. The ready-to-use folder (scripts/package.ps1) ships it built and without its sources:
+# it is taken as it is. Next to its sources, it is rebuilt when they are newer.
 $modRoot = Join-Path $RepoRoot 'mod'
 $libs = Join-Path $modRoot 'build\libs'
 $jar = Get-ChildItem $libs -Filter 'world-preview-*.jar' -ErrorAction SilentlyContinue |
     Sort-Object LastWriteTime | Select-Object -Last 1
-$newestSource = Get-ChildItem (Join-Path $modRoot 'src'), (Join-Path $modRoot 'build.gradle') -Recurse -File |
-    Sort-Object LastWriteTime | Select-Object -Last 1
-if (-not $jar -or $jar.LastWriteTime -lt $newestSource.LastWriteTime) {
+$sources = Join-Path $modRoot 'src'
+if (-not (Test-Path $sources)) {
+    if (-not $jar) { throw "The world-preview mod is missing: no jar in $libs and no sources to build it from." }
+}
+elseif (-not $jar -or $jar.LastWriteTime -lt (Get-ChildItem $sources, (Join-Path $modRoot 'build.gradle') -Recurse -File |
+        Sort-Object LastWriteTime | Select-Object -Last 1).LastWriteTime) {
     Write-Host 'Building the world-preview mod'
     $env:JAVA_HOME = Split-Path (Split-Path (Find-Java))
     Push-Location $modRoot
@@ -92,10 +96,10 @@ try {
 # 2. The throwaway server: launcher jar, then the pack's mods, synced again only when the pack changed.
 $launcher = Get-FabricServerJar $Pack $Dir
 $stampFile = Join-Path $Dir '.pack-stamp'
-$stamp = (Get-FileHash (Join-Path $Pack 'pack.toml')).Hash + (Get-FileHash (Join-Path $Pack 'index.toml')).Hash
-if (-not (Test-Path $stampFile) -or (Get-Content $stampFile -Raw).Trim() -ne $stamp) {
+$stamp = Get-PackStamp $Pack
+if (-not (Test-Path $stampFile) -or [IO.File]::ReadAllText($stampFile).Trim() -ne $stamp) {
     Sync-Pack $Pack $Dir
-    Set-Content $stampFile $stamp
+    [IO.File]::WriteAllText($stampFile, $stamp)
 }
 Get-ChildItem (Join-Path $Dir 'mods') -Filter 'world-preview-*.jar' | Remove-Item
 Copy-Item $jar.FullName (Join-Path $Dir 'mods')
@@ -105,7 +109,7 @@ Copy-Item $jar.FullName (Join-Path $Dir 'mods')
 Get-ChildItem (Join-Path $Dir 'mods') -Filter 'DistantHorizons-*.jar' | Remove-Item
 
 # 3. The Tectonic config for this run: the pack's file, with the asked values replaced.
-$config = Get-Content (Join-Path $Pack 'config\tectonic.json') -Raw
+$config = [IO.File]::ReadAllText((Join-Path $Pack 'config\tectonic.json'))
 foreach ($key in $Tectonic.Keys) {
     $value = $Tectonic[$key]
     $text = if ($value -is [bool]) { "$value".ToLower() } else { ([double]$value).ToString([Globalization.CultureInfo]::InvariantCulture) }
@@ -118,7 +122,8 @@ New-Item -ItemType Directory -Force (Join-Path $Dir 'config') | Out-Null
 
 # 4. A server nobody joins: local only, its own port, one small world folder per seed.
 $world = 'seed-' + ($Seed -replace '[^A-Za-z0-9_-]', '_')
-@(
+# Written as UTF-8 without a mark at its head, whatever the shell: the server reads it so.
+[IO.File]::WriteAllLines((Join-Path $Dir 'server.properties'), [string[]]@(
     'motd=World preview'
     "level-seed=$Seed"
     "level-name=$world"
@@ -130,17 +135,13 @@ $world = 'seed-' + ($Seed -replace '[^A-Za-z0-9_-]', '_')
     # The sampling runs inside one tick. A wide grid takes more than the minute after which the
     # watchdog calls a server crashed and kills it, so the watchdog is off here.
     'max-tick-time=-1'
-) | Set-Content (Join-Path $Dir 'server.properties')
+))
 
 # 5. Run. The mod stops the server itself once the files are written.
 Remove-Item (Join-Path $Out 'preview.json'), (Join-Path $Out 'coarse.json') -ErrorAction SilentlyContinue
-$java = Find-Java
 $watch = [Diagnostics.Stopwatch]::StartNew()
-Push-Location $Dir
-try {
-    & $java -Xmx4G -XX:+UseZGC "-Dworldpreview.out=$Out" "-Dworldpreview.samples=$Samples" "-Dworldpreview.step=$Step" -jar $launcher nogui |
-        Set-Content (Join-Path $Dir 'last-run.log')
-} finally { Pop-Location }
+$null = Invoke-Java $Dir (Join-Path $Dir 'last-run.log') @('-Xmx4G', '-XX:+UseZGC', "-Dworldpreview.out=$Out",
+    "-Dworldpreview.samples=$Samples", "-Dworldpreview.step=$Step", '-jar', $launcher, 'nogui')
 
 if (-not (Test-Path (Join-Path $Out 'preview.json'))) {
     throw "The preview server ended without a result. See $(Join-Path $Dir 'last-run.log')"
@@ -149,5 +150,5 @@ if (-not (Test-Path (Join-Path $Out 'preview.json'))) {
 } finally { $lock.ReleaseMutex() }
 
 # What this preview was made with, so the page can show the same seed and values next to the map.
-@{ seed = $Seed; tectonic = $Tectonic } | ConvertTo-Json | Set-Content (Join-Path $Out 'run.json')
+[IO.File]::WriteAllText((Join-Path $Out 'run.json'), (@{ seed = $Seed; tectonic = $Tectonic } | ConvertTo-Json))
 Write-Host "Preview ready in $Out ($([int]$watch.Elapsed.TotalSeconds) s)"
