@@ -348,6 +348,13 @@
   };
 
   const $ = id => document.getElementById(id);
+
+  // The browser keeps this window's size from one opening to the next, but a window that joins a browser
+  // already running ignores the size its command line asks for. So the page sets it itself, the first
+  // time only: after that, the size is whatever the person left.
+  try {
+    if (!localStorage.getItem('preview.sized')) { resizeTo(1400, 940); localStorage.setItem('preview.sized', '1'); }
+  } catch { }
   for (const el of document.querySelectorAll('[data-text]')) el.textContent = text[el.dataset.text];
   $('seed').placeholder = text.seedRandom;
   $('filter').placeholder = text.filter;
