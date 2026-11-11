@@ -9,15 +9,19 @@ kept in run\pack.txt. WORLD_PREVIEW_PACK, when set, wins over the kept choice.
 
 With no console to read, whatever goes wrong before the page opens is said in a message box.
 
+.PARAMETER Pack
+The game folder, when it is given rather than asked: a folder dropped on "World Preview.cmd" arrives here.
+
 .PARAMETER Choose
 Ask for the folder again, even when one is remembered.
 #>
-param([switch]$Choose)
+param([string]$Pack, [switch]$Choose)
 
 # The sentences of the windows this script shows.
 $Text = @{
     title  = 'World preview'
-    choose = 'Choose your Minecraft game folder: the one that holds the "mods" and "config" folders.'
+    choose = 'Open your Minecraft game folder, the one that holds "mods" and "config", then click Open'
+    here   = 'This folder'
 }
 
 Add-Type -AssemblyName System.Windows.Forms
@@ -28,7 +32,7 @@ $owner.TopMost = $true
 try {
     . "$PSScriptRoot\common.ps1"
     $saved = Join-Path $RepoRoot 'run\pack.txt'
-    $pack = $env:WORLD_PREVIEW_PACK
+    $pack = if ($Pack) { $Pack } else { $env:WORLD_PREVIEW_PACK }
     if (-not $pack -and -not $Choose -and (Test-Path $saved)) { $pack = [IO.File]::ReadAllText($saved).Trim() }
     while ($true) {
         if ($pack) {
@@ -36,11 +40,18 @@ try {
             try { $pack = Resolve-Pack $pack; break }
             catch { $null = [Windows.Forms.MessageBox]::Show($owner, $_.Exception.Message, $Text.title) }
         }
-        $dialog = [Windows.Forms.FolderBrowserDialog]::new()
-        $dialog.Description = $Text.choose
-        $dialog.ShowNewFolderButton = $false
+        # The window that opens files, asked for a folder: under Windows PowerShell the one made for folders
+        # is a bare tree with no address bar, and game folders sit under AppData, which that tree hides.
+        # A name that is no file lets Open answer with the folder being looked at.
+        $dialog = [Windows.Forms.OpenFileDialog]::new()
+        $dialog.Title = $Text.choose
+        $dialog.ValidateNames = $false
+        $dialog.CheckFileExists = $false
+        $dialog.FileName = $Text.here
         if ($dialog.ShowDialog($owner) -ne 'OK') { return }
-        $pack = $dialog.SelectedPath
+        $pack = Split-Path $dialog.FileName
+        # Someone who went one step too far, into mods or config, meant the folder above.
+        if ((Split-Path $pack -Leaf) -in 'mods', 'config') { $pack = Split-Path $pack }
     }
     New-Item -ItemType Directory -Force (Split-Path $saved) | Out-Null
     [IO.File]::WriteAllText($saved, $pack)
