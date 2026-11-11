@@ -738,6 +738,8 @@
     const image = pen.createImageData(n, n), px = image.data;
     // What is not a chosen biome steps back towards the ground: water, then land.
     const stepBack = scheme.matches ? [16, 40] : [200, 226];
+    // The line between two zones that stepped back: a little towards the text's side of the ground.
+    const fadedLine = scheme.matches ? 1.3 : 0.92;
     // A chosen biome this world does not have dims nothing.
     const lit = world.biomes.map(b => chosen.has(b.id)), choosing = lit.includes(true);
     for (let i = 0; i < total; i++) {
@@ -749,10 +751,15 @@
         const north = i >= n ? h[i - n] : y, south = i < total - n ? h[i + n] : y;
         slope = (east - west) + (south - north);
       }
+      // Where the biome changes. Not between two kinds of sea, which would only add noise.
+      const right = x < n - 1 ? i + 1 : i, below = i < total - n ? i + n : i;
+      const border = (at[right] !== biome && !(water && h[right] < sea)) || (at[below] !== biome && !(water && h[below] < sea));
       let c, shade = 1;
       if (choosing && !lit[biome]) {
         const g = stepBack[water ? 0 : 1];
         c = [g, g, g]; shade = clamp(1 + slope * 0.004, 0.9, 1.1);
+        // What stepped back keeps a trace of its zones, so a chosen biome is still read among its neighbours.
+        if (border && view === 'biomes') shade *= fadedLine;
       } else if (view === 'height') {
         c = heightColour(y, sea); shade = clamp(1 + slope * 0.012, 0.75, 1.25);
       } else if (view === 'temperature') {
@@ -768,9 +775,7 @@
         shade = clamp(1 + slope * 0.006, 0.85, 1.15);
         // A dark line where the biome changes: two neighbours of one colour family stay two zones.
         // Lighter on a pale biome, where it would turn into a heavy grey maze; stronger on a dark one.
-        // Not between two kinds of sea, which would only add noise.
-        const right = x < n - 1 ? i + 1 : i, below = i < total - n ? i + n : i;
-        if ((at[right] !== biome && !(water && h[right] < sea)) || (at[below] !== biome && !(water && h[below] < sea))) shade *= c[0] + c[1] + c[2] > 420 ? 0.75 : 0.5;
+        if (border) shade *= c[0] + c[1] + c[2] > 420 ? 0.75 : 0.5;
       }
       px[i * 4] = c[0] * shade; px[i * 4 + 1] = c[1] * shade; px[i * 4 + 2] = c[2] * shade; px[i * 4 + 3] = 255;
     }
@@ -921,7 +926,9 @@
         const THREE = await import('three');
         const { OrbitControls } = await import('three/addons/controls/OrbitControls.js');
         const host = $('relief');
-        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        // From ten blocks to two hundred thousand, the plain depth test cannot tell the sea from a shore one
+        // block above it, and the two flicker; the logarithmic one keeps them apart at any distance.
+        const renderer = new THREE.WebGLRenderer({ antialias: true, logarithmicDepthBuffer: true });
         renderer.setPixelRatio(devicePixelRatio);
         host.append(renderer.domElement);
         const scene = new THREE.Scene();
@@ -961,8 +968,9 @@
       texture.colorSpace = THREE.SRGBColorSpace;
       texture.magFilter = THREE.NearestFilter;
       scene3d.land = new THREE.Mesh(ground, new THREE.MeshBasicMaterial({ map: texture }));
+      // Half a block under the sea level: ground at that level is land, and must not lie in the sheet of water.
       scene3d.water = new THREE.Mesh(
-        new THREE.PlaneGeometry(width, width).rotateX(-Math.PI / 2).translate(0, world.seaLevel, 0),
+        new THREE.PlaneGeometry(width, width).rotateX(-Math.PI / 2).translate(0, world.seaLevel - 0.5, 0),
         new THREE.MeshBasicMaterial({ color: 0x2f5c9e, transparent: true, opacity: 0.6 }));
       scene.add(scene3d.land, scene3d.water);
       if (!scene3d.running) { scene3d.running = true; scene3d.draw(); }
