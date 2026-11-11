@@ -126,10 +126,12 @@ function Start-Tray {
             $bitmap = [Drawing.Bitmap]::new(32, 32)
             $pen = [Drawing.Graphics]::FromImage($bitmap)
             $pen.SmoothingMode = 'AntiAlias'
+            # The leading commas keep each face whole: without them the three lists pour into one flat
+            # list, nothing is drawn, and the icon is an empty square.
             $faces = @(
-                @($top,   @(16, 2), @(30, 9),  @(16, 16), @(2, 9))
-                @($left,  @(2, 9),  @(16, 16), @(16, 30), @(2, 23))
-                @($right, @(30, 9), @(16, 16), @(16, 30), @(30, 23))
+                , @($top,   @(16, 2), @(30, 9),  @(16, 16), @(2, 9))
+                , @($left,  @(2, 9),  @(16, 16), @(16, 30), @(2, 23))
+                , @($right, @(30, 9), @(16, 16), @(16, 30), @(30, 23))
             )
             foreach ($face in $faces) {
                 $brush = [Drawing.SolidBrush]::new([Drawing.ColorTranslator]::FromHtml($face[0]))
