@@ -14,7 +14,9 @@ What happens behind the page, and how to look at the page without opening it. Th
 
 The server's output lands in `last-run.log` in the work folder, what Java wrote as errors in `last-run.errors.log`, and the same two for packwiz-installer under `last-sync`. Java runs through `Start-Process` and these files: Windows PowerShell stops a script on the first line a program writes to a redirected error stream.
 
-The mod makes two passes. The sketch first (`coarse.json`, `coarse-heights.bin`, `coarse-biomes.bin`): one point in four along each side, without the aquifers, so close but not proven exact. Then the full grid (`preview.json`, `heights.bin`, `biomes.bin`): the ground height from `ChunkGenerator.getBaseHeight` (heightmap `OCEAN_FLOOR_WG`, so a sea bed shows its depth) and the surface biome from the biome source. No chunk is generated.
+The mod makes several passes, from coarse to full. The sketches first: one point in 16, then 4, then 2 of the full grid along each side, each kept when it leaves at least 128 points a side, without the aquifers, so close but not proven exact. Each replaces `coarse.json` and writes its points as `coarse-<step>-heights.bin` and `coarse-<step>-biomes.bin`; the page asks for `coarse.json` every second and draws a sketch when it is finer than the one on screen. Then the full grid (`preview.json`, `heights.bin`, `biomes.bin`): the ground height from `ChunkGenerator.getBaseHeight` (heightmap `OCEAN_FLOOR_WG`, so a sea bed shows its depth) and the surface biome from the biome source. No chunk is generated.
+
+The computation leaves room for the rest of the machine: the mod samples on half of the available processors (`-Dworldpreview.threads=<n>` on the server's command line says otherwise), and `preview.ps1` puts the server below the normal priority. With every thread at the normal priority, a full pass made the machine stall for seconds at a time.
 
 A changed Tectonic value applies on the next start, on the same world folder. Two runs never go together on one machine: they would share a port and, often, a folder. The second waits on a named mutex.
 

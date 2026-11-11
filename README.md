@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/media/board-hero.png" alt="World preview. See the world a seed and its terrain settings give, before anyone plays in it. The game's own generator: a first sketch in about 11 seconds, the map in about 23." width="100%">
+  <img src="docs/media/board-hero.png" alt="World preview. See the world a seed and its terrain settings give, before anyone plays in it. The game's own generator: a first sketch in about 12 seconds, the map in about 35." width="100%">
 </p>
 
 The world preview shows what a Minecraft seed and a set of terrain values would give, without playing and without generating the world. It asks the game's own generator, through a throwaway server running your Fabric modpack, how high the ground is and which biome sits at the surface, then draws the answer in a small window.
@@ -12,7 +12,8 @@ It was written while tuning a modpack's terrain, where every try used to mean st
 
 - **The real generator, without the world.** A throwaway dedicated server starts with the pack, and a small mod asks the generator two questions on a grid, one point every 16 blocks: how high is the ground, which biome is at the surface. No chunk is generated. Trees, structures and caves are therefore not on the map.
 - **A seed and ten sliders.** The sliders are [Tectonic](https://modrinth.com/mod/tectonic)'s values for the size and climate of biomes, the relief, and the continents. They start at the pack's values; a changed one keeps the pack's value beside it. Sets of values can be kept under a name.
-- **A sketch first, then the map.** A coarse sketch, one point every 64 blocks, takes the map's place while the full map is computed (see the timings below).
+- **Sketches first, then the map.** A coarse sketch takes the map's place while the full map is computed, then finer ones replace it: on the widest area, one point every 256 blocks, then 64, then 32 (see the timings below).
+- **The machine stays usable.** The computation takes half of the processor's threads and runs below the normal priority, so the page and everything else keep answering while it works. It is slower for it, on purpose.
 - **Nothing is written to the pack.** A preview changes the config of its own throwaway server only.
 
 <img src="docs/media/board-views.png" alt="The same area in four views: biomes, flat land, relief, temperature." width="100%">
@@ -84,21 +85,23 @@ With another work folder (`-Dir`), the EULA is accepted in that folder: the line
 
 ## Timings
 
-Measured on the machine it was written on (2026-11-11), on a seed whose small world folder already existed:
+Measured on the machine it was written on (2026-11-11, 8 threads used of 16), on a seed whose small world folder already existed:
 
-| Area | Sketch on screen | Full map |
-| --- | --- | --- |
-| 4096 blocks | 11 s | 15 s |
-| 8192 blocks (default) | 11 s | 23 s |
-| 16384 blocks | 12 s | 58 s |
-| 32768 blocks | 16 s | 3 min 20 s |
+| Area | First sketch on screen | Finer sketches | Full map |
+| --- | --- | --- | --- |
+| 4096 blocks | 12 s | | 17 s |
+| 8192 blocks (default) | 12 s | 15 s | 35 s |
+| 16384 blocks | 15 s | 27 s | 1 min 40 s |
+| 32768 blocks | 11 s | 23 s, 1 min 6 s | 5 min 50 s |
 
-Most of the sketch's wait is the server start. A seed run for the first time took about 10 seconds more, once (22 s to the sketch, 32 s to the map, at 8192 blocks). The first run of all also downloads the game's server, and from the repository builds the mod: a few minutes.
+Another machine has its own pace: the page's "takes about" starts from these figures, then follows the last run made on the machine it is on. With every thread at the normal priority the widest map took 3 min 20 s here, and the machine stalled for seconds at a time meanwhile.
+
+Most of the first sketch's wait is the server start. A seed run for the first time took about 10 seconds more, once (22 s to the sketch, 32 s to the map, at 8192 blocks). The first run of all also downloads the game's server, and from the repository builds the mod: a few minutes.
 
 ## Limits
 
 - No trees, structures or caves: the map answers "how big, how high, how much", not "is this biome pleasant to walk in".
-- The sketch skips the aquifers and reads one point in four along each side: close to the full map, not proven exact.
+- The sketches skip the aquifers (the game's underground water and lava) and read fewer points: close to the full map, not proven exact.
 - Windows only: the scripts lean on PowerShell, the Windows registry to find the browser, and Windows Forms for the tray icon.
 - One run at a time on a machine: a second one waits for the first.
 - A game folder may hold mods made for the game's window only. Fabric leaves them alone on the preview's server when they say so; one that does not could stop it. Seen working with a folder of five mods, not with a large pack.
