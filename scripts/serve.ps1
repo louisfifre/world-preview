@@ -180,7 +180,11 @@ function Start-Tray {
 # The preview being computed, if any: its background shell, the handle that says when it has ended, and
 # the request that waits for its answer. It runs beside the request loop, so the page can fetch the
 # sketch of the map while it waits. A shell of its own rather than a thread job: Windows PowerShell has none.
+# It also keeps what was asked and when, for a window opened meanwhile: only the window that asked holds
+# the waiting request, and any other one would show an idle page over a server that is computing.
 $Run = $null
+# What the last run threw, for a window that joined it and has no answer of its own to read.
+$LastFailure = $null
 
 function Complete-Preview {
     # Answers the request that started the preview, once it has ended.
@@ -194,6 +198,7 @@ function Complete-Preview {
         while ($inner.InnerException) { $inner = $inner.InnerException }
         $failure = $inner.Message
     }
+    $script:LastFailure = $failure
     $shell.Dispose()
     if ($tray) {
         $tray.Busy = $false
@@ -246,6 +251,13 @@ try {
             elseif ($method -eq 'GET' -and $path -eq '/api/preview/config') {
                 Send-Reply $context 200 (ConvertTo-Json (Get-PackTectonic $Pack))
             }
+            elseif ($method -eq 'GET' -and $path -eq '/api/preview/run') {
+                $state = if ($Run) {
+                    @{ running = $true; seed = $Run.Seed; samples = $Run.Samples; tectonic = $Run.Tectonic
+                       seconds = [int]((Get-Date) - $Run.Started).TotalSeconds }
+                } else { @{ running = $false; error = $LastFailure } }
+                Send-Reply $context 200 (ConvertTo-Json $state)
+            }
             elseif ($method -eq 'GET' -and $path -match '^/preview/data/((coarse-\d+-)?(heights|biomes)\.bin|preview\.json|coarse\.json|run\.json)$') {
                 $file = Join-Path $Out $Matches[1]
                 if (Test-Path $file) { Send-Bytes $context 200 ([IO.File]::ReadAllBytes($file)) 'application/octet-stream' }
@@ -282,7 +294,8 @@ try {
                     foreach ($argument in "$PSScriptRoot\preview.ps1", $Pack, $Dir, $seed, $tectonic, $samples, $Out) {
                         $null = $shell.AddArgument($argument)
                     }
-                    $Run = @{ Shell = $shell; Handle = $shell.BeginInvoke(); Context = $context }
+                    $Run = @{ Shell = $shell; Handle = $shell.BeginInvoke(); Context = $context
+                              Seed = $seed; Samples = $samples; Tectonic = $tectonic; Started = Get-Date }
                     if ($tray) { $tray.Busy = $true }
                 }
             }
@@ -298,6 +311,13 @@ try {
     # Let the icon's thread leave by itself. Ending the script while its timer still ticks stops that
     # thread in the middle of a tick, which Windows shows as an error box ("The pipeline has been stopped").
     if ($tray) { $tray.Stop = $true; $null = $tray.Done.WaitOne(3000) }
-    # A preview cut short would leave its server running and its folder locked: let it end first.
-    if ($Run) { $null = $Run.Handle.AsyncWaitHandle.WaitOne() }
+    # Quitting stops the preview being computed: without a window or an icon, nobody could see it go on,
+    # nor stop it, and a wide one takes the machine for many minutes. Its Java is a child of this process.
+    # It generates no chunk, so nothing is left half-written but a throwaway world folder. Then the run
+    # ends by itself, which frees its folder.
+    if ($Run) {
+        Get-CimInstance Win32_Process -Filter "ParentProcessId=$PID AND Name LIKE 'java%'" |
+            ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+        $null = $Run.Handle.AsyncWaitHandle.WaitOne()
+    }
 }
