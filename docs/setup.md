@@ -6,11 +6,13 @@ What happens behind the page, and how to look at the page without opening it. Th
 
 `preview.ps1` prepares a throwaway dedicated server in its work folder (`-Dir`, `run\preview` by default) and starts it:
 
-1. It builds the mod in `mod/` when its sources are newer than the jar (`mod\gradlew.bat build`, Java 25). The first build downloads Gradle and the game, a few minutes.
-2. It checks `eula.txt` in the work folder first, before downloading anything there. Accepting the Minecraft EULA is the folder owner's decision; no script writes it.
-3. It downloads the Fabric server launcher for the pack's versions, then installs the server side of the pack with packwiz-installer, again only when `pack.toml` or `index.toml` changed. Distant Horizons, when the pack has it, is taken out of the work folder only: it plays no part in the generator's answers and costs seconds at every start.
+1. It checks `eula.txt` in the work folder first, before downloading anything there. Accepting the Minecraft EULA is the folder owner's decision; no script writes it.
+2. It takes the mod's jar. Next to its sources, it builds it when they are newer (`mod\gradlew.bat build`, a JDK 25; the first build downloads Gradle and the game, a few minutes). In the ready-to-use folder there are no sources and the jar is taken as it is.
+3. It downloads the Fabric server launcher, then fills the work folder with the mods, again only when they changed. From a packwiz pack, packwiz-installer reads `pack.toml` straight from the disk and installs the pack's server side, at the versions the pack names. From a game folder, the jars of `mods` and the `config` folder are copied, and the versions are those the mod is built for (`mod\gradle.properties`). Distant Horizons, when it is there, is taken out of the work folder only: it plays no part in the generator's answers and costs seconds at every start.
 4. It writes the pack's `config/tectonic.json` into the work folder, with the values the run asked for, and a `server.properties` for a server nobody joins (local only, port 25599, one small world folder per seed, watchdog off since the sampling runs inside one tick).
 5. It starts the server. The mod, dormant unless the server is started with `-Dworldpreview.out`, samples the generator once the server is up, writes the files and stops the server.
+
+The server's output lands in `last-run.log` in the work folder, what Java wrote as errors in `last-run.errors.log`, and the same two for packwiz-installer under `last-sync`. Java runs through `Start-Process` and these files: Windows PowerShell stops a script on the first line a program writes to a redirected error stream.
 
 The mod makes two passes. The sketch first (`coarse.json`, `coarse-heights.bin`, `coarse-biomes.bin`): one point in four along each side, without the aquifers, so close but not proven exact. Then the full grid (`preview.json`, `heights.bin`, `biomes.bin`): the ground height from `ChunkGenerator.getBaseHeight` (heightmap `OCEAN_FLOOR_WG`, so a sea bed shows its depth) and the surface biome from the biome source. No chunk is generated.
 

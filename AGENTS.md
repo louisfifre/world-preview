@@ -1,12 +1,15 @@
 # world-preview
 
-A Windows tool that shows what a Minecraft seed and a set of Tectonic values would give, without generating the world: a throwaway Fabric server runs a packwiz pack plus our small mod, the mod samples the generator's ground height and surface biome on a grid, and a local page draws the result. Any packwiz pack for Fabric that includes Tectonic can be previewed; the pack is always a parameter.
+A Windows tool that shows what a Minecraft seed and a set of Tectonic values would give, without generating the world: a throwaway Fabric server runs a set of mods plus our small mod, the mod samples the generator's ground height and surface biome on a grid, and a local page draws the result. The mods come from a game folder or from a packwiz pack, for Fabric and with Tectonic; that folder is always a parameter.
+
+It is made for people who play and are not developers: they download a zip, double-click, choose their game folder. Whatever a person runs (`World Preview.cmd`, `start.ps1`, `serve.ps1`, `preview.ps1`, `common.ps1`) must work under Windows PowerShell 5.1 and ask for nothing to install beyond the game. The scripts that make pictures or the zip are ours and may ask for more.
 
 ## Where things live
 
 - `mod/`: the Fabric mod (id `world-preview`, jar `world-preview-<version>.jar`), one single-project Gradle build with its wrapper.
 - `page/preview.html`: the page, one file, served at `/`.
-- `scripts/common.ps1`: helpers (pack lookup, Java, Fabric server jar, packwiz sync, browser lookup).
+- `scripts/common.ps1`: helpers (pack lookup, Java, Fabric server jar, filling the work folder from a pack or a game folder, browser lookup).
+- `World Preview.cmd` and `scripts/start.ps1`: the double-click start, which asks for the game folder once and keeps it in `run\pack.txt`. `scripts/package.ps1`: the ready-to-use zip in `run\package`, with the mod already built and without its sources.
 - `scripts/preview.ps1`: one run. `scripts/serve.ps1`: the page's local server, port 25590. `scripts/capture.ps1`: pictures of the page from a second server, port 25591. `scripts/boards.ps1`: the README's illustrations.
 - `docs/setup.md`: how a run and the server work. `docs/media/`: `boards.html` and the board pictures.
 - `run/` (ignored): downloaded tools, the default work folder `run\preview`, captures.
