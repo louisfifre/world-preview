@@ -1,0 +1,5 @@
+# The Gradle wrapper script runs under sh, which does not read CRLF; the batch file wants CRLF.
+mod/gradlew text eol=lf
+*.bat text eol=crlf
+*.png binary
+*.jar binary

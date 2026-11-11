@@ -1,0 +1,13 @@
+// A single-project build: the preview mod is the only one here, so it sits at the root.
+pluginManagement {
+	repositories {
+		maven {
+			name = 'Fabric'
+			url = 'https://maven.fabricmc.net/'
+		}
+		mavenCentral()
+		gradlePluginPortal()
+	}
+}
+
+rootProject.name = 'world-preview'

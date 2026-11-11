@@ -1,0 +1,19 @@
+# Downloaded tools, the default work folder of the throwaway server, captures
+run/
+
+# Gradle / Fabric Loom
+.gradle/
+build/
+*.launch
+
+# IDEs
+.idea/
+*.iml
+.vscode/
+.settings/
+.classpath
+.project
+
+# OS
+Thumbs.db
+.DS_Store

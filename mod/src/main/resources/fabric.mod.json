@@ -1,0 +1,19 @@
+{
+	"schemaVersion": 1,
+	"id": "world-preview",
+	"version": "${version}",
+	"name": "World Preview",
+	"description": "Asks the world generator which biome and which ground height it would produce over a large area, without generating a single chunk, and writes the answer to files. Dormant unless started with -Dworldpreview.out.",
+	"authors": ["Louis"],
+	"license": "GPL-3.0-only",
+	"environment": "*",
+	"entrypoints": {
+		"main": ["exploration.preview.WorldPreview"]
+	},
+	"depends": {
+		"fabricloader": ">=0.20.1",
+		"minecraft": "~26.3",
+		"java": ">=25",
+		"fabric-api": "*"
+	}
+}
