@@ -185,10 +185,19 @@ function Start-Tray {
 $Run = $null
 # What the last run threw, for a window that joined it and has no answer of its own to read.
 $LastFailure = $null
+# Whether the last run was stopped from the page, which is not a failure.
+$LastStopped = $false
+
+function Stop-RunJava {
+    # The Java of the run is a child of this process. It generates no chunk, so nothing is left
+    # half-written but a throwaway world folder; the run then ends by itself, which frees its folder.
+    Get-CimInstance Win32_Process -Filter "ParentProcessId=$PID AND Name LIKE 'java%'" |
+        ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+}
 
 function Complete-Preview {
     # Answers the request that started the preview, once it has ended.
-    $shell, $handle, $context = $script:Run.Shell, $script:Run.Handle, $script:Run.Context
+    $shell, $handle, $context, $stopped = $script:Run.Shell, $script:Run.Handle, $script:Run.Context, $script:Run.Stopped
     $script:Run = $null
     $failure = $null
     try { $null = $shell.EndInvoke($handle) }
@@ -198,21 +207,30 @@ function Complete-Preview {
         while ($inner.InnerException) { $inner = $inner.InnerException }
         $failure = $inner.Message
     }
+    # A run that was stopped ends on an error of its own, which is no trouble to report.
+    if ($stopped) { $failure = $null }
     $script:LastFailure = $failure
+    $script:LastStopped = [bool]$stopped
     $shell.Dispose()
     if ($tray) {
         $tray.Busy = $false
-        $tray.Notify = if ($failure) { $TrayText.failed } else { $TrayText.ready }
+        if (-not $stopped) { $tray.Notify = if ($failure) { $TrayText.failed } else { $TrayText.ready } }
     }
     # The page may have been closed meanwhile: nobody to answer then.
     try {
-        if ($failure) { Send-Reply $context 500 (ConvertTo-Json @{ error = $failure }) } else { Send-Reply $context 200 }
+        if ($failure) { Send-Reply $context 500 (ConvertTo-Json @{ error = $failure }) }
+        else { Send-Reply $context 200 (ConvertTo-Json @{ stopped = [bool]$stopped }) }
     } catch { }
 }
 
 function Test-PreviewEnded {
     # True when a preview was running and has just been answered.
-    if (-not $script:Run -or -not $script:Run.Handle.IsCompleted) { return $false }
+    if (-not $script:Run) { return $false }
+    if (-not $script:Run.Handle.IsCompleted) {
+        # Stop may have been asked before the run had started its Java: look again until the run ends.
+        if ($script:Run.Stopped) { Stop-RunJava }
+        return $false
+    }
     Complete-Preview
     return $true
 }
@@ -255,7 +273,7 @@ try {
                 $state = if ($Run) {
                     @{ running = $true; seed = $Run.Seed; samples = $Run.Samples; tectonic = $Run.Tectonic
                        seconds = [int]((Get-Date) - $Run.Started).TotalSeconds }
-                } else { @{ running = $false; error = $LastFailure } }
+                } else { @{ running = $false; error = $LastFailure; stopped = $LastStopped } }
                 Send-Reply $context 200 (ConvertTo-Json $state)
             }
             elseif ($method -eq 'GET' -and $path -match '^/preview/data/((coarse-\d+-)?(heights|biomes)\.bin|preview\.json|coarse\.json|run\.json)$') {
@@ -299,6 +317,23 @@ try {
                     if ($tray) { $tray.Busy = $true }
                 }
             }
+            elseif ($path -eq '/api/preview/stop') {
+                if ($Run) { $Run.Stopped = $true; Stop-RunJava }
+                Send-Reply $context 200
+            }
+            elseif ($path -match '^/api/preview/export/([\w-]{1,90})/((biomes|flat|height|temperature)(-3d)?\.png|export\.json)$') {
+                # One file of an export: the pictures of the map and what the page measured, kept in a
+                # folder of their own so a try can be looked at again, or shown to someone, later.
+                $folder = Join-Path (Join-Path $Dir 'exports') $Matches[1]
+                $name = $Matches[2]
+                if ($request.ContentLength64 -gt 64MB) { Send-Reply $context 413 }
+                else {
+                    $null = New-Item -ItemType Directory -Force $folder
+                    $file = [IO.File]::Create((Join-Path $folder $name))
+                    try { $request.InputStream.CopyTo($file) } finally { $file.Dispose() }
+                    Send-Reply $context 200 (ConvertTo-Json @{ folder = $folder })
+                }
+            }
             else {
                 Send-Reply $context 404
             }
@@ -312,12 +347,9 @@ try {
     # thread in the middle of a tick, which Windows shows as an error box ("The pipeline has been stopped").
     if ($tray) { $tray.Stop = $true; $null = $tray.Done.WaitOne(3000) }
     # Quitting stops the preview being computed: without a window or an icon, nobody could see it go on,
-    # nor stop it, and a wide one takes the machine for many minutes. Its Java is a child of this process.
-    # It generates no chunk, so nothing is left half-written but a throwaway world folder. Then the run
-    # ends by itself, which frees its folder.
+    # nor stop it, and a wide one takes the machine for many minutes.
     if ($Run) {
-        Get-CimInstance Win32_Process -Filter "ParentProcessId=$PID AND Name LIKE 'java%'" |
-            ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+        Stop-RunJava
         $null = $Run.Handle.AsyncWaitHandle.WaitOne()
     }
 }
