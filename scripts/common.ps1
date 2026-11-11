@@ -115,14 +115,22 @@ function Find-Java {
     throw 'Java 25 or newer was not found. Start Minecraft 26 once from its launcher, which downloads its own Java, or install Java 25 from https://adoptium.net'
 }
 
-function Invoke-Java([string]$WorkDir, [string]$Log, [string[]]$Arguments) {
+function Invoke-Java([string]$WorkDir, [string]$Log, [string[]]$Arguments, [switch]$Background) {
     # Runs java in a folder, its output in a log and its errors in a second one beside it, and gives the exit code.
     # Through Start-Process and files, because Windows PowerShell stops a script on the first line a program
     # writes to its error stream once that stream is redirected, and Java writes its warnings there.
     $quoted = $Arguments | ForEach-Object { if ($_ -match '\s') { '"' + $_ + '"' } else { $_ } }
     $errors = [IO.Path]::ChangeExtension($Log, '.errors.log')
-    $process = Start-Process -FilePath (Find-Java) -ArgumentList $quoted -WorkingDirectory $WorkDir -NoNewWindow -Wait -PassThru `
-        -RedirectStandardOutput $Log -RedirectStandardError $errors
+    $start = @{ FilePath = (Find-Java); ArgumentList = $quoted; WorkingDirectory = $WorkDir; NoNewWindow = $true; PassThru = $true
+        RedirectStandardOutput = $Log; RedirectStandardError = $errors }
+    if (-not $Background) { return (Start-Process @start -Wait).ExitCode }
+    # A long computation steps aside: below the normal priority, Windows serves every other program
+    # first, the window the person is looking at among them, and gives this one what is left.
+    $process = Start-Process @start
+    # Asked for while the process lives, or its exit code is lost once it has ended.
+    $null = $process.Handle
+    try { $process.PriorityClass = 'BelowNormal' } catch { }
+    $process.WaitForExit()
     return $process.ExitCode
 }
 
