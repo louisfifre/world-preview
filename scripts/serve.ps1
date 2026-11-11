@@ -175,17 +175,24 @@ function Start-Tray {
     $shared
 }
 
-# The preview being computed, if any: its background job and the request that waits for its answer.
-# It runs beside the request loop, so the page can fetch the sketch of the map while it waits.
+# The preview being computed, if any: its background shell, the handle that says when it has ended, and
+# the request that waits for its answer. It runs beside the request loop, so the page can fetch the
+# sketch of the map while it waits. A shell of its own rather than a thread job: Windows PowerShell has none.
 $Run = $null
 
 function Complete-Preview {
-    # Answers the request that started the preview, once its job has ended.
-    $job, $context = $script:Run.Job, $script:Run.Context
+    # Answers the request that started the preview, once it has ended.
+    $shell, $handle, $context = $script:Run.Shell, $script:Run.Handle, $script:Run.Context
     $script:Run = $null
     $failure = $null
-    try { $null = Receive-Job $job -Wait -ErrorAction Stop } catch { $failure = $_.Exception.Message }
-    Remove-Job $job -Force
+    try { $null = $shell.EndInvoke($handle) }
+    catch {
+        # The sentence the run threw sits under the wrapping of the call: the page shows it as it is.
+        $inner = $_.Exception
+        while ($inner.InnerException) { $inner = $inner.InnerException }
+        $failure = $inner.Message
+    }
+    $shell.Dispose()
     if ($tray) {
         $tray.Busy = $false
         $tray.Notify = if ($failure) { $TrayText.failed } else { $TrayText.ready }
@@ -198,7 +205,7 @@ function Complete-Preview {
 
 function Test-PreviewEnded {
     # True when a preview was running and has just been answered.
-    if (-not $script:Run -or $script:Run.Job.State -in 'NotStarted', 'Running') { return $false }
+    if (-not $script:Run -or -not $script:Run.Handle.IsCompleted) { return $false }
     Complete-Preview
     return $true
 }
@@ -229,7 +236,7 @@ try {
             $path = $request.Url.AbsolutePath
 
             if ($method -eq 'GET' -and $path -eq '/') {
-                Send-Reply $context 200 (Get-Content $Page -Raw) 'text/html'
+                Send-Reply $context 200 ([IO.File]::ReadAllText($Page)) 'text/html'
             }
             elseif ($method -eq 'GET' -and $path -eq '/api/ping') {
                 Send-Reply $context 200
@@ -265,11 +272,15 @@ try {
                 else {
                     # The sketch of the run before must not pass for the sketch of this one.
                     Remove-Item (Join-Path $Out 'coarse.json') -ErrorAction SilentlyContinue
-                    $job = Start-ThreadJob -ArgumentList "$PSScriptRoot\preview.ps1", $Pack, $Dir, $seed, $tectonic, $samples, $Out -ScriptBlock {
+                    $shell = [powershell]::Create()
+                    $null = $shell.AddScript({
                         param($script, $pack, $dir, $seed, $tectonic, $samples, $out)
                         & $script -Pack $pack -Dir $dir -Seed $seed -Tectonic $tectonic -Samples $samples -Out $out *> $null
+                    })
+                    foreach ($argument in "$PSScriptRoot\preview.ps1", $Pack, $Dir, $seed, $tectonic, $samples, $Out) {
+                        $null = $shell.AddArgument($argument)
                     }
-                    $Run = @{ Job = $job; Context = $context }
+                    $Run = @{ Shell = $shell; Handle = $shell.BeginInvoke(); Context = $context }
                     if ($tray) { $tray.Busy = $true }
                 }
             }
@@ -286,5 +297,5 @@ try {
     # thread in the middle of a tick, which Windows shows as an error box ("The pipeline has been stopped").
     if ($tray) { $tray.Stop = $true; $null = $tray.Done.WaitOne(3000) }
     # A preview cut short would leave its server running and its folder locked: let it end first.
-    if ($Run) { $null = Wait-Job $Run.Job }
+    if ($Run) { $null = $Run.Handle.AsyncWaitHandle.WaitOne() }
 }
