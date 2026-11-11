@@ -11,6 +11,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.ForkJoinPool;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
@@ -94,6 +95,31 @@ final class Sampler {
 
 		int origin = -(samples * step) / 2;
 		Files.createDirectories(out);
+		// The passes run on a pool of their own rather than on the JVM's shared one, which takes every
+		// core: a full pass lasts minutes, and with all cores busy the machine, the page that shows the
+		// sketch included, stops answering.
+		ForkJoinPool pool = new ForkJoinPool(threads());
+		WorldPreview.LOG.info("World preview: {} threads of {}", pool.getParallelism(),
+				Runtime.getRuntime().availableProcessors());
+		try {
+			run(out, source, pool, samples, step, origin);
+		} finally {
+			pool.shutdown();
+		}
+	}
+
+	/**
+	 * How many threads sample: {@code -Dworldpreview.threads} when given, else half of what the machine
+	 * has. Half leaves a core in two to whatever else the person is doing, on any machine, and on the
+	 * usual processor with two threads per core it is one thread per real core.
+	 */
+	private static int threads() {
+		int asked = Integer.getInteger("worldpreview.threads", 0);
+		return asked > 0 ? asked : Math.max(1, Runtime.getRuntime().availableProcessors() / 2);
+	}
+
+	private static void run(Path out, Generator source, ForkJoinPool pool, int samples, int step, int origin)
+			throws IOException {
 		// The coarse pass covers the same square with a step COARSE times longer. It leaves the
 		// aquifers out: setting one up looks for the surface level all over the area its columns
 		// cover, so its cost follows the area, not the number of points, and with aquifers the sketch
@@ -102,8 +128,8 @@ final class Sampler {
 		// between water and caves (on seed cap-1, all 16384 coarse heights came out the same either
 		// way). So the sketch is close, not proven exact, and the full pass computes its points again
 		// rather than reusing them.
-		write(out, "coarse", source, sample(source, samples / COARSE, step * COARSE, origin, false));
-		write(out, "preview", source, sample(source, samples, step, origin, true));
+		write(out, "coarse", source, sample(source, pool, samples / COARSE, step * COARSE, origin, false));
+		write(out, "preview", source, sample(source, pool, samples, step, origin, true));
 	}
 
 	/**
@@ -122,29 +148,31 @@ final class Sampler {
 	}
 
 	/** One pass, with the aquifers when {@code exact}, as the generator does. */
-	private static Grid sample(Generator source, int samples, int step, int origin, boolean exact) {
+	private static Grid sample(Generator source, ForkJoinPool pool, int samples, int step, int origin,
+			boolean exact) {
 		long started = System.nanoTime();
 		short[] heights = new short[samples * samples];
 		@SuppressWarnings("unchecked")
 		Holder<Biome>[] biomes = new Holder[samples * samples];
 
-		// The square is cut into tiles of TILE x TILE points, sampled each in one go, and every core
-		// takes its share of tiles (the generator is safe to query from several threads: Distant
-		// Horizons does the same).
+		// The square is cut into tiles of TILE x TILE points, sampled each in one go, and every
+		// thread of the pool takes its share of tiles (the generator is safe to query from several
+		// threads: Distant Horizons does the same). A parallel stream started from inside a pool runs
+		// on that pool, hence the submit.
 		NoiseGeneratorSettings settings = exact ? source.settings() : source.dry();
 		int tiles = (samples + TILE - 1) / TILE;
-		IntStream.range(0, tiles * tiles).parallel().forEach(tile -> {
+		pool.submit(() -> IntStream.range(0, tiles * tiles).parallel().forEach(tile -> {
 			int col0 = (tile % tiles) * TILE, row0 = (tile / tiles) * TILE;
 			sampleTile(source, settings, samples, step, origin, col0, row0,
 					Math.min(TILE, samples - col0), Math.min(TILE, samples - row0), heights);
-		});
+		})).join();
 
 		// The biomes come after, row by row from west to east, as before the tiles. The order matters:
 		// the biome source remembers, per thread, the biome it found last and starts its next search
 		// from it, so where two biomes fit a point equally well, the one found first wins. Read in
 		// another order, a few points in a hundred thousand change biome.
 		int seaLevel = source.generator().getSeaLevel();
-		IntStream.range(0, samples).parallel().forEach(row -> {
+		pool.submit(() -> IntStream.range(0, samples).parallel().forEach(row -> {
 			BiomeResolver resolver = source.generator().getBiomeSource().createUncachedResolver(source.randomState());
 			int z = origin + row * step;
 			for (int col = 0; col < samples; col++) {
@@ -155,7 +183,7 @@ final class Sampler {
 				biomes[i] = resolver.getNoiseBiome(
 						QuartPos.fromBlock(x), QuartPos.fromBlock(surface), QuartPos.fromBlock(z));
 			}
-		});
+		})).join();
 		return new Grid(samples, step, origin, heights, biomes, (System.nanoTime() - started) / 1_000_000);
 	}
 
