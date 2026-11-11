@@ -12,7 +12,7 @@ It was written while tuning a modpack's terrain, where every try used to mean st
 
 - **The real generator, without the world.** A throwaway dedicated server starts with the pack, and a small mod asks the generator two questions on a grid, one point every 16 blocks: how high is the ground, which biome is at the surface. No chunk is generated. Trees, structures and caves are therefore not on the map.
 - **A seed and twelve sliders.** The sliders are [Tectonic](https://modrinth.com/mod/tectonic)'s values for the size and climate of biomes, the relief, and the continents. They start at the pack's values; a changed one keeps the pack's value beside it. Sets of values can be kept under a name.
-- **Sketches first, then the map.** A coarse sketch takes the map's place while the full map is computed, then finer ones replace it: on the widest area, one point every 256 blocks, then 64, then 32 (see the timings below).
+- **Sketches first, then the map.** A coarse sketch takes the map's place while the full map is computed, then finer ones replace it: on the widest area, one point every 256 blocks, then 64, then 32 (see the timings below). The steps of the run are listed where the button is, each with the second it ended at, and the button stops the run.
 - **The machine stays usable.** The computation takes half of the processor's threads and runs below the normal priority, so the page and everything else keep answering while it works. It is slower for it, on purpose.
 - **Nothing is written to the pack.** A preview changes the config of its own throwaway server only.
 
@@ -25,11 +25,12 @@ It was written while tuning a modpack's terrain, where every try used to mean st
 
 <img src="docs/media/board-biomes.png" alt="Three biomes shown alone on the map, the others stepped back to grey, beside the list of biomes with their typical width and their share." width="100%">
 
-- **A few biomes alone.** A click on a biome, in the list or on the map, shows it alone; more clicks add others. The choice is kept from one run to the next, to follow a biome across tries.
+- **A few biomes alone.** A click on a biome, in the list or on the map, shows it alone; more clicks add others. The choice is kept from one run to the next, to follow a biome across tries. The other views have a list of their own, chosen the same way: bands of height, classes of temperature, flat land against slopes and water.
 
 <img src="docs/media/board-relief.png" alt="The biome map draped over the real heights, seen from low above the sea." width="100%">
 
 - **Draped over the real heights.** Any view can be shown in 3D, at true scale: one unit is one block, heights included.
+- **A try can be kept.** Export writes a folder under `run\preview\exports`: the settings and the figures in one file, and a picture of each view, flat and in 3D.
 
 ## Requirements
 
