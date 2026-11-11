@@ -29,10 +29,11 @@ A page cannot start a program or read a file, so `serve.ps1` is the small local 
 | `GET /` | The page. Its state can be asked in the address: `/?view=height,relief3d&biome=minecraft:desert`. |
 | `GET /api/preview/config` | The pack's Tectonic values, where the sliders start. |
 | `POST /api/preview` | Starts a run in the background and answers when it ends. Only from the page itself: the `Origin` header must be the server's own. |
+| `GET /api/preview/run` | The run under way, if any: its seed, area, values and age in seconds. A window opened during a run reads it to join that run; once the run is over, it says what went wrong, if anything. |
 | `GET /preview/data/<file>` | The files of the last run, the sketch included. |
 | `GET /api/ping` | The page pings every 10 seconds; the server stops about 90 seconds after the pings stop, never during a run. |
 
-The run goes on a background thread, so the server answers the page's other requests meanwhile, the sketch among them. If the port is already taken, the script only opens a window on the server that holds it.
+The run goes on a background thread, so the server answers the page's other requests meanwhile, the sketch among them. Quitting from the icon stops a run under way, its Java included. If the port is already taken, the script only opens a window on the server that holds it.
 
 ## Looking at the page without opening it
 
