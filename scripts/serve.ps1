@@ -276,7 +276,7 @@ try {
                 } else { @{ running = $false; error = $LastFailure; stopped = $LastStopped } }
                 Send-Reply $context 200 (ConvertTo-Json $state)
             }
-            elseif ($method -eq 'GET' -and $path -match '^/preview/data/((coarse-\d+-)?(heights|biomes)\.bin|preview\.json|coarse\.json|run\.json|section\.json|section-\d\.bin|ores\.json)$') {
+            elseif ($method -eq 'GET' -and $path -match '^/preview/data/((coarse-\d+-)?(heights|biomes)\.bin|preview\.json|coarse\.json|run\.json|section\.json|section-\d\.bin|ores\.json|structures\.json)$') {
                 $file = Join-Path $Out $Matches[1]
                 if (Test-Path $file) { Send-Bytes $context 200 ([IO.File]::ReadAllBytes($file)) 'application/octet-stream' }
                 else { Send-Reply $context 404 }

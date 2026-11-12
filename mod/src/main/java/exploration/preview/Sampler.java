@@ -117,6 +117,12 @@ final class Sampler {
 			} catch (Exception e) {
 				WorldPreview.LOG.error("World preview: no section", e);
 			}
+			// A try of its own: trouble with the cuts must not lose the structures, nor the reverse.
+			try {
+				Structures.write(server, out, source, full, pool);
+			} catch (Exception e) {
+				WorldPreview.LOG.error("World preview: no structures", e);
+			}
 		} finally {
 			pool.shutdown();
 		}
