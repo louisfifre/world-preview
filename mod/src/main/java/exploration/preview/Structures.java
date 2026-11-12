@@ -59,8 +59,12 @@ final class Structures {
 	private Structures() {
 	}
 
-	/** One structure of one set, as listed in the output. */
-	private record Entry(String id, String set) {
+	/**
+	 * One structure of one set, as listed in the output. The step is the generation step the structure
+	 * declares (underground_structures, surface_structures...): the only thing the generator says of
+	 * whether it is built under the ground, so the page can tell a mineshaft from a village.
+	 */
+	private record Entry(String id, String set, String step) {
 	}
 
 	/** A chunk a set's placement picked, to be tried. */
@@ -70,6 +74,11 @@ final class Structures {
 	/** What every try needs. */
 	private record Context(Sampler.Generator source, ChunkGeneratorStructureState state, RegistryAccess access,
 			StructureTemplateManager templates, Map<Entry, Integer> indexOf) {
+	}
+
+	private static Entry entryOf(StructureSet.StructureSelectionEntry entry, Holder<StructureSet> set) {
+		return new Entry(entry.structure().getRegisteredName(), set.getRegisteredName(),
+				entry.structure().value().step().getSerializedName());
 	}
 
 	static void write(MinecraftServer server, Path out, Sampler.Generator source, Sampler.Grid grid,
@@ -86,7 +95,7 @@ final class Structures {
 		boolean enabled = server.getWorldGenSettings().options().generateStructures();
 		for (Holder<StructureSet> set : enabled ? state.possibleStructureSets() : List.<Holder<StructureSet>>of()) {
 			for (StructureSet.StructureSelectionEntry entry : set.value().structures()) {
-				Entry e = new Entry(entry.structure().getRegisteredName(), set.getRegisteredName());
+				Entry e = entryOf(entry, set);
 				if (!indexOf.containsKey(e)) {
 					indexOf.put(e, entries.size());
 					entries.add(e);
@@ -136,6 +145,7 @@ final class Structures {
 			JsonObject entry = new JsonObject();
 			entry.addProperty("id", e.id());
 			entry.addProperty("set", e.set());
+			entry.addProperty("step", e.step());
 			list.add(entry);
 		}
 		JsonArray points = new JsonArray();
@@ -254,8 +264,7 @@ final class Structures {
 				.filter(stub -> hasStartPiece(structure)
 						|| new StructureStart(structure, pos, 0, stub.getPiecesBuilder().build()).isValid())
 				.map(stub -> new int[] {
-						context.indexOf().get(new Entry(entry.structure().getRegisteredName(),
-								candidate.set().getRegisteredName())),
+						context.indexOf().get(entryOf(entry, candidate.set())),
 						stub.position().getX(), stub.position().getZ() })
 				.orElse(null);
 	}
