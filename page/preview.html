@@ -429,6 +429,8 @@
     lists: { biomes: ['Biomes', 'biome'], flat: ['Ground', 'ground'], height: ['Heights', 'height'], temperature: ['Temperatures', 'climate'], structures: ['Structures', 'structure'] },
     heightBands: (sea, steps) => ['Under the sea', ...steps.map((top, i) => `${i ? steps[i - 1] : sea} to ${top}`), `Above ${steps.at(-1)}`],
     pickHint: 'Click rows, here or on the map.',
+    // The structures built under the ground step back while nothing is chosen: said where the list starts.
+    pickHintUnder: 'Click rows, here or on the map. Grey dots: built under the ground.',
     pickedMany: count => `${count} chosen`,
     pickedShare: share => ` · ${share} of the area`,
     pickedCount: (count, of) => ` · ${count} of ${of}`,
@@ -482,7 +484,6 @@
     noStructures: 'No structures for this preview. Generate it again.',
     parts: ['On the surface', 'Under the ground'],
     partHint: 'Click to show this part alone; again to show all.',
-    dimUnder: ' Grey dots: underground.',
     structureProbe: (x, z, name) => `x ${x}   z ${z}   ${name}`,
     // [name, a short note beside it, the definition shown on hover]
     figureNames: {
@@ -1346,8 +1347,7 @@
       head.setAttribute('aria-pressed', picked.size === head.partIds.length && head.partIds.every(id => picked.has(id)));
       head.hidden = !head.partIds.some(id => !$('biomes').querySelector(`[data-id="${CSS.escape(id)}"]`).hidden);
     }
-    if (view === 'structures') restProbe();
-    if (!rows.length) { $('pick').replaceChildren(text.pickHint); return; }
+    if (!rows.length) { $('pick').replaceChildren(view === 'structures' ? text.pickHintUnder : text.pickHint); return; }
     const none = document.createElement('button');
     none.textContent = text.pickNone;
     none.addEventListener('click', () => { picked.clear(); showChoice(); paint(); });
@@ -1367,10 +1367,7 @@
   const restProbe = () => {
     if (view === 'section') { restCut(); return; }
     if (!world) return;
-    // While nothing is chosen, the dim dots of the structures need a word: they are the buried ones.
-    const s = view === 'structures' && !world.sketch ? world.structures : null;
-    const dim = !!s && s.under.some((under, i) => under && s.count[i]) && !s.ids.some(id => chosen.structures.has(id));
-    $('probe').textContent = text.area(num(world.samples * world.step), num(world.samples * world.step / 8), !$('cutLine').hidden) + (dim ? text.dimUnder : '');
+    $('probe').textContent = text.area(num(world.samples * world.step), num(world.samples * world.step / 8), !$('cutLine').hidden);
   };
   function showWorld() {
     showRows(); showTabs(); showFigures(); showList(); restProbe(); showButton();
