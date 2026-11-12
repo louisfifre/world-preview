@@ -285,6 +285,16 @@
     padding: 4px 0; text-align: left; font-size: 13px;
   }
   .biome:hover .name { text-decoration: underline; }
+  /* The line over a part of the list reads like the heads of the columns: a note, not a title. Pressed, it
+     takes the colour of the text, as its part is then shown alone. */
+  .part {
+    width: 100%; display: grid; grid-template-columns: 12px minmax(0, 1fr) auto auto; gap: 8px; align-items: baseline;
+    padding: 12px 0 4px; text-align: left; font-size: 12px; color: var(--muted);
+  }
+  .part:first-child { padding-top: 2px; }
+  .part:hover span:nth-child(2) { text-decoration: underline; text-underline-offset: 3px; }
+  .part[aria-pressed=true] { color: var(--text); }
+  .part .share { min-width: 6ch; text-align: right; }
   /* The list mirrors the map: the chosen biomes stay lit, the others step back. */
   .biome[aria-pressed=true] .name { font-weight: 600; }
   #biomes.choosing .biome[aria-pressed=false] { opacity: 0.6; }
@@ -470,6 +480,9 @@
     area: (blocks, square, cut) => `${blocks} × ${blocks} blocks, north up. One square: ${square} blocks. Cross: 0,0.${cut ? ' Ticks: the cut.' : ''}`,
     // The structures: where each would start, as the generator places them.
     noStructures: 'No structures for this preview. Generate it again.',
+    parts: ['On the surface', 'Under the ground'],
+    partHint: 'Click to show this part alone; again to show all.',
+    dimUnder: ' Grey dots: underground.',
     structureProbe: (x, z, name) => `x ${x}   z ${z}   ${name}`,
     // [name, a short note beside it, the definition shown on hover]
     figureNames: {
@@ -710,7 +723,13 @@
     const top = first.getBoundingClientRect().top - list.getBoundingClientRect().top + list.scrollTop;
     // The list's own room, less the fade at its foot.
     const room = list.clientHeight - 28;
-    list.scrollTop = first.hidden ? 0 : first.offsetHeight > room ? top : Math.max(0, top + first.offsetHeight - room);
+    if (first.hidden) { list.scrollTop = 0; return; }
+    const need = first.offsetHeight > room ? top : Math.max(0, top + first.offsetHeight - room);
+    // The list starts on the title of a group, never on the tail of one: a lone hint under a pinned title
+    // reads as something broken.
+    const starts = [0, ...Object.values(groups).filter(g => !g.box.hidden)
+      .map(g => g.box.getBoundingClientRect().top - list.getBoundingClientRect().top + list.scrollTop)];
+    list.scrollTop = Math.min(top, ...starts.filter(at => at >= need - 0.5));
   }
   function showNote(key, count) {
     groups[key].note.textContent = count ? text.changed(count) : '';
@@ -818,20 +837,26 @@
     const vary = hashOf(id);
     return hslToRgb((h + (vary - 0.5) * 22 + 360) % 360, s, Math.max(12, Math.min(92, l + (hashOf(id + '!') - 0.5) * 16)));
   }
-  // A structure's colour comes from its family, as a biome's does. The frequent families (mineshafts, buried
-  // treasure, portals, wrecks, ocean ruins, villages) each get a hue far from the others', so they stay told
-  // apart on the map; the members of a family share it in shades. The set is read with the id, so a mod's
-  // village joins the villages; the namespace is not, or a mod named after dungeons would make all its
-  // structures dungeons. [hue, saturation, lightness].
+  // A structure's colour comes from its family, as a biome's does. What is built on the surface is what the
+  // view is looked at for, so each surface family gets a hue far from the others' (villages green, ocean
+  // ruins teal, monuments blue, portals violet, temples and towers pink, outposts red, wrecks orange, rubble
+  // yellow), and the members of a family share it in shades. What is built under the ground comes first, so
+  // a mod's "underground/mining_outpost" is not taken for an outpost. The set is read with the id, so a
+  // mod's village joins the villages; the namespace is not, or a mod named after dungeons would make all
+  // its structures dungeons. [hue, saturation, lightness].
   const structureFamilies = [
-    [/village|town|settlement|hamlet/, [96, 58, 50]],
-    [/outpost|pillager|illager|bandit|camp|raid/, [0, 72, 56]],
-    [/portal/, [282, 55, 66]],
-    [/ocean_ruin|monument|underwater|coral/, [176, 62, 46]],
-    [/shipwreck|ship|boat|typhon|pirate/, [26, 78, 52]],
+    [/underground|mineshaft|ancient_city|stronghold|trial|dungeon|catacomb|crypt|mines\b/, [214, 60, 66]],
     [/treasure|buried/, [52, 92, 56]],
-    [/mineshaft|mine|ancient_city|stronghold|trial|dungeon|catacomb|crypt|underground/, [214, 72, 64]],
-    [/pyramid|temple|hut|igloo|mansion|tower|castle|palace|keep|fort/, [328, 62, 66]],
+    [/village|town|settlement|hamlet/, [100, 62, 48]],
+    [/monument/, [226, 78, 62]],
+    [/ocean_ruin|underwater|coral/, [174, 70, 42]],
+    [/portal/, [282, 58, 66]],
+    [/pyramid|temple|hut|igloo|mansion|tower|spire|castle|palace|keep|fort|lodge|mage/, [326, 64, 68]],
+    [/outpost|pillager|illager|bandit|raid/, [0, 76, 56]],
+    [/shipwreck|ship|boat|typhon|pirate/, [24, 82, 52]],
+    [/rubble/, [48, 70, 60]],
+    // A camp left behind is neither an outpost nor a wreck: a quiet earth colour.
+    [/camp/, [30, 28, 58]],
     [/ruin|trail/, [40, 38, 64]],
   ];
   function structureColour(id, set) {
@@ -839,8 +864,13 @@
     const family = structureFamilies.find(([pattern]) => pattern.test(name));
     // A family no rule knows still gets a hue of its own, from its set, but a quieter one.
     const [h, s, l] = family ? family[1] : [hashOf(`${set ?? id}`) * 360, 34, 62];
-    return hslToRgb((h + (hashOf(id) - 0.5) * 20 + 360) % 360, s, l + (hashOf(id + '!') - 0.5) * 14);
+    return hslToRgb((h + (hashOf(id) - 0.5) * 14 + 360) % 360, s, l + (hashOf(id + '!') - 0.5) * 12);
   }
+  // Built under the ground, or on the surface. The step a structure declares says it for the game's own
+  // ("underground_structures", "underground_decoration"), but a mod may declare its buried ones as surface
+  // structures (Terralith does), so a name that says "underground" counts too; strongholds are deep whatever
+  // their step says. An older file without steps falls back on the names alone.
+  const underground = (id, step) => /^underground/.test(step ?? '') || /underground/.test(id) || id === 'minecraft:stronghold';
   const isWater = id => /ocean|river/.test(id);
   // Height above the sea: lowland green, then ochre, rock, snow. Below: deeper is darker.
   function heightColour(y, sea) {
@@ -922,6 +952,7 @@
     return {
       ids: data.structures.map(s => s.id), points, count, byKind,
       colours: data.structures.map(s => structureColour(s.id, s.set)),
+      under: data.structures.map(s => underground(s.id, s.step)),
       // Drawn kind by kind, the most frequent first, so the rare ones lie over them.
       order: data.structures.map((_, i) => i).filter(i => count[i]).sort((a, b) => count[b] - count[a]),
     };
@@ -1160,8 +1191,10 @@
       const pixel = marksSide / shown / (far ? 1 : look.k ** 0.8);
       const radius = (far ? 4.5 : 3.5) * pixel, toCanvas = marksSide / (n * world.step);
       const picked = chosen.structures, choosing = !exporting && s.ids.some(id => picked.has(id));
-      const lit = kind => !choosing || picked.has(s.ids[kind]);
-      // What is not chosen steps back to a small grey dot: still a place, no longer a kind.
+      // With nothing chosen, what is built under the ground steps back: there are far more of them, and the
+      // view is opened for what can be seen from the surface. A choice lights what it names, buried or not.
+      const lit = kind => choosing ? picked.has(s.ids[kind]) : !s.under[kind];
+      // What is not lit steps back to a small grey dot: still a place, no longer a kind.
       const dot = (kind, r) => {
         pen.beginPath();
         for (const [, x, z] of s.byKind[kind]) {
@@ -1245,7 +1278,7 @@
     // Biomes by share, structures by count. Bands keep their own order, lowest or coldest first; one this world does not have is left out.
     const order = list ? list.ids.map((_, i) => i).filter(i => list.cells[i]) : [];
     if (view === 'biomes' || counted) order.sort((a, b) => list.cells[b] - list.cells[a]);
-    $('biomes').replaceChildren(...order.map(i => {
+    const makeRow = i => {
       const row = document.createElement('button');
       row.className = 'biome num';
       row.dataset.id = list.ids[i];
@@ -1258,6 +1291,30 @@
       row.children[3].textContent = counted ? num(list.cells[i]) : percent(100 * list.cells[i] / total);
       row.addEventListener('click', () => choose(list.ids[i]));
       return row;
+    };
+    if (!counted) { $('biomes').replaceChildren(...order.map(makeRow)); showChoice(); return; }
+    // The structures come in two parts, what is built on the surface and what is built under the ground,
+    // each under a quiet line of its own that shows the whole part alone.
+    const s = world.structures;
+    $('biomes').replaceChildren(...[false, true].flatMap(under => {
+      const rows = order.filter(i => s.under[i] === under);
+      if (!rows.length) return [];
+      const head = document.createElement('button');
+      head.className = 'part num';
+      head.dataset.part = under ? 'under' : 'surface';
+      head.innerHTML = '<span></span><span></span><span></span><span class="share"></span>';
+      head.children[1].textContent = text.parts[+under];
+      head.children[3].textContent = num(rows.reduce((sum, i) => sum + list.cells[i], 0));
+      head.title = text.partHint;
+      head.addEventListener('click', () => {
+        const picked = chosen.structures, ids = rows.map(i => list.ids[i]);
+        const alone = picked.size === ids.length && ids.every(id => picked.has(id));
+        picked.clear();
+        if (!alone) for (const id of ids) picked.add(id);
+        showChoice(); paint();
+      });
+      head.partIds = rows.map(i => list.ids[i]);
+      return [head, ...rows.map(makeRow)];
     }));
     showChoice();
   }
@@ -1278,11 +1335,18 @@
     list.ids.forEach((id, i) => { if (picked.has(id) && list.cells[i]) { cells += list.cells[i]; rows.push(i); } });
     $('biomes').classList.toggle('choosing', rows.length > 0);
     for (const row of $('biomes').children) {
+      if (row.partIds) continue;
       const on = picked.has(row.dataset.id);
       row.setAttribute('aria-pressed', on);
       // The filter reads the id too, so the name of a mod finds its biomes. A chosen biome stays in sight.
       row.hidden = !on && !!asked && !row.dataset.id.replaceAll('_', ' ').includes(asked);
     }
+    // A part's line is pressed when its part is shown alone, and goes when the filter leaves the part empty.
+    for (const head of $('biomes').querySelectorAll('.part')) {
+      head.setAttribute('aria-pressed', picked.size === head.partIds.length && head.partIds.every(id => picked.has(id)));
+      head.hidden = !head.partIds.some(id => !$('biomes').querySelector(`[data-id="${CSS.escape(id)}"]`).hidden);
+    }
+    if (view === 'structures') restProbe();
     if (!rows.length) { $('pick').replaceChildren(text.pickHint); return; }
     const none = document.createElement('button');
     none.textContent = text.pickNone;
@@ -1302,7 +1366,11 @@
 
   const restProbe = () => {
     if (view === 'section') { restCut(); return; }
-    if (world) $('probe').textContent = text.area(num(world.samples * world.step), num(world.samples * world.step / 8), !$('cutLine').hidden);
+    if (!world) return;
+    // While nothing is chosen, the dim dots of the structures need a word: they are the buried ones.
+    const s = view === 'structures' && !world.sketch ? world.structures : null;
+    const dim = !!s && s.under.some((under, i) => under && s.count[i]) && !s.ids.some(id => chosen.structures.has(id));
+    $('probe').textContent = text.area(num(world.samples * world.step), num(world.samples * world.step / 8), !$('cutLine').hidden) + (dim ? text.dimUnder : '');
   };
   function showWorld() {
     showRows(); showTabs(); showFigures(); showList(); restProbe(); showButton();
