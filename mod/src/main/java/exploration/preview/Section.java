@@ -26,7 +26,8 @@ import net.minecraft.world.level.levelgen.densityfunction.ScopedDensityBuffer;
 /**
  * Vertical cuts through the ground, from the bottom of the world to its top, one block per cell.
  *
- * <p>A cut runs from west to east. Each of its cells is what the generator's density and aquifers
+ * <p>A cut runs from west to east across the whole sampled square, from its west edge to its east
+ * edge, so a cut shows every place the map shows along its line. Each of its cells is what the generator's density and aquifers
  * give before anything else touches the chunk: rock, air, water or lava. So the noise caves and the
  * underground lakes are there; what later steps of a real chunk add is not (the top layers of earth
  * or sand, carved ravines, ores, trees). Like the map, it reads the generator only: no chunk is
@@ -38,8 +39,6 @@ import net.minecraft.world.level.levelgen.densityfunction.ScopedDensityBuffer;
  * {@code section.json}, which lists them.
  */
 final class Section {
-	/** Blocks along a cut, when the map is that wide. */
-	private static final int LENGTH = 2048;
 	private static final int CUTS = 4;
 	private static final int CANDIDATES = 400;
 	/** Columns sampled with one noise chunk. */
@@ -50,20 +49,20 @@ final class Section {
 	private Section() {
 	}
 
-	/** A line of the grid: its row, its first column, and how varied the ground along it is. */
-	private record Line(int row, int col, double score) {
+	/** A row of the grid and how varied the ground along it is. */
+	private record Line(int row, double score) {
 	}
 
 	static void write(Path out, Sampler.Generator source, Sampler.Grid grid, ForkJoinPool pool) throws IOException {
-		int points = Math.min(grid.samples(), LENGTH / grid.step());
-		int length = points * grid.step();
+		long started = System.nanoTime();
+		int length = grid.samples() * grid.step();
 		NoiseSettings noise = source.noise();
 		int sea = source.generator().getSeaLevel();
 
 		JsonArray cuts = new JsonArray();
 		int index = 0;
-		for (Line line : choose(grid, points, sea, source.level().getSeed())) {
-			int x0 = grid.origin() + line.col() * grid.step(), z = grid.origin() + line.row() * grid.step();
+		for (Line line : choose(grid, sea, source.level().getSeed())) {
+			int x0 = grid.origin(), z = grid.origin() + line.row() * grid.step();
 			String file = "section-" + index++ + ".bin";
 			Files.write(out.resolve(file), cells(source, pool, x0, z, length));
 			JsonObject cut = new JsonObject();
@@ -81,43 +80,45 @@ final class Section {
 		json.add("cuts", cuts);
 		// Written last: its presence tells the caller the cuts are complete.
 		Files.writeString(out.resolve("section.json"), new GsonBuilder().setPrettyPrinting().create().toJson(json));
-		WorldPreview.LOG.info("World preview (section): {} cuts of {} blocks", cuts.size(), length);
+		WorldPreview.LOG.info("World preview (section): {} cuts of {} blocks, {} ms", cuts.size(), length,
+				(System.nanoTime() - started) / 1_000_000);
 	}
 
 	/**
 	 * The lines worth cutting. A cut is there to show how the underground follows the ground, so a
 	 * line scores by how high it climbs above the sea, and more when it also crosses some sea and some
 	 * level land. The draw depends on the seed alone: the same seed gives the same lines, so two runs
-	 * with other values are compared on the same places.
+	 * with other values are compared on the same places. A line spans the whole square, so only its
+	 * row is drawn.
 	 */
-	private static List<Line> choose(Sampler.Grid grid, int points, int sea, long seed) {
+	private static List<Line> choose(Sampler.Grid grid, int sea, long seed) {
 		int n = grid.samples();
 		short[] heights = grid.heights();
 		Random random = new Random(seed);
 		List<Line> lines = new ArrayList<>();
 		for (int i = 0; i < CANDIDATES; i++) {
-			int row = random.nextInt(n), col = random.nextInt(n - points + 1);
+			int row = random.nextInt(n);
 			int top = Integer.MIN_VALUE, water = 0, level = 0;
-			for (int p = 0; p < points; p++) {
-				int h = heights[row * n + col + p];
+			for (int p = 0; p < n; p++) {
+				int h = heights[row * n + p];
 				top = Math.max(top, h);
 				if (h < sea - 2) {
 					water++;
-				} else if (p > 0 && heights[row * n + col + p - 1] >= sea - 2
-						&& Math.abs(h - heights[row * n + col + p - 1]) <= 2) {
+				} else if (p > 0 && heights[row * n + p - 1] >= sea - 2
+						&& Math.abs(h - heights[row * n + p - 1]) <= 2) {
 					level++;
 				}
 			}
-			double waterShare = (double) water / points, levelShare = (double) level / points;
+			double waterShare = (double) water / n, levelShare = (double) level / n;
 			double score = (top - sea) + (waterShare >= 0.05 && waterShare <= 0.5 ? 150 : 0)
 					+ (levelShare >= 0.2 ? 100 : 0);
-			lines.add(new Line(row, col, score));
+			lines.add(new Line(row, score));
 		}
 		lines.sort((a, b) -> Double.compare(b.score(), a.score()));
-		// The best ones, but not twice the same place: rows at least a quarter of a cut apart.
+		// The best ones, but not twice the same place: rows at least an eighth of the square apart.
 		List<Line> kept = new ArrayList<>();
 		for (Line line : lines) {
-			if (kept.size() < CUTS && kept.stream().noneMatch(k -> Math.abs(k.row() - line.row()) < points / 4)) {
+			if (kept.size() < CUTS && kept.stream().noneMatch(k -> Math.abs(k.row() - line.row()) < n / 8)) {
 				kept.add(line);
 			}
 		}

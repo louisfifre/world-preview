@@ -126,7 +126,7 @@ foreach ($mod in $Mods) {
     if (-not (Test-Path $mod)) { throw "The mod to add was not found: $mod" }
     Copy-Item $mod (Join-Path $Dir 'mods')
 }
-[IO.File]::WriteAllLines($addedFile, [string[]]@($Mods | ForEach-Object { Split-Path $_ -Leaf }))
+[IO.File]::WriteAllLines($addedFile, [string[]]@($Mods | Where-Object { $_ } | ForEach-Object { Split-Path $_ -Leaf }))
 
 # 3. The Tectonic config for this run: the pack's file, with the asked values replaced.
 $config = [IO.File]::ReadAllText((Join-Path $Pack 'config\tectonic.json'))
@@ -159,7 +159,8 @@ $world = 'seed-' + ($Seed -replace '[^A-Za-z0-9_-]', '_')
 
 # 5. Run. The mod stops the server itself once the files are written.
 Remove-Item (Join-Path $Out 'preview.json'), (Join-Path $Out 'coarse.json'), (Join-Path $Out 'coarse-*.bin'),
-    (Join-Path $Out 'section.json'), (Join-Path $Out 'section-*.bin'), (Join-Path $Out 'ores.json') -ErrorAction SilentlyContinue
+    (Join-Path $Out 'section.json'), (Join-Path $Out 'section-*.bin'), (Join-Path $Out 'ores.json'),
+    (Join-Path $Out 'structures.json') -ErrorAction SilentlyContinue
 $watch = [Diagnostics.Stopwatch]::StartNew()
 $null = Invoke-Java $Dir (Join-Path $Dir 'last-run.log') @('-Xmx4G', '-XX:+UseZGC', "-Dworldpreview.out=$Out",
     "-Dworldpreview.samples=$Samples", "-Dworldpreview.step=$Step", '-jar', $launcher, 'nogui') -Background

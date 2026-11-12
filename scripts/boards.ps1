@@ -28,7 +28,7 @@ param(
 
 $pieces = Join-Path $RepoRoot 'run\captures\pieces'
 $media = Join-Path $RepoRoot 'docs\media'
-$done = "document.getElementById('probe').textContent.startsWith('Preview ready') || document.getElementById('status').className === 'trouble'"
+$done = "document.getElementById('status').textContent.startsWith('Preview ready') || document.getElementById('status').className === 'trouble'"
 $flatter = "for (const [k, v] of [['flat_terrain_skew', 0.35], ['erosion_scale', 0.15]]) { const i = document.getElementById(k); i.value = v; i.dispatchEvent(new Event('input')); } document.getElementById('generate').click();"
 $chosen = 'biome=minecraft:desert,minecraft:badlands,minecraft:plains'
 

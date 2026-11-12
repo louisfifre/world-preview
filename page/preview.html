@@ -52,14 +52,20 @@
     font: 14px/1.4 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
     user-select: none;
   }
-  /* A narrow window gives its width to the map first. */
-  @media (max-width: 1150px) {
-    body { grid-template-columns: 230px minmax(0, 1fr) 250px; gap: 24px; padding: 20px; }
-    .setting small { display: none; }
+  /* A narrow window takes its width from the map first, then from the list on the right. The left
+     column keeps room for a hint under each slider on one or two lines: without them a slider is only a name. */
+  @media (max-width: 1250px) {
+    body { grid-template-columns: 284px minmax(0, 1fr) 264px; gap: 24px; padding: 22px 22px; }
   }
-  /* A title is the same text as the rest, only heavier: no capitals, no second colour. */
-  h2 { margin: 0 0 6px; font-size: 14px; font-weight: 600; }
-  .column { min-height: 0; display: flex; flex-direction: column; gap: 16px; }
+  @media (max-width: 1100px) {
+    body { grid-template-columns: 262px minmax(0, 1fr) 250px; gap: 20px; padding: 18px 16px; }
+    .choice { gap: 14px; }
+  }
+  /* One scale for the whole page, four sizes: 16 for a title, 14 for what is read, 13 for rows and labels,
+     12 for notes and the heads of columns. A title is larger and heavier than what it heads and has room
+     above it: no capitals, no second colour. One step above, 18, is kept for the figures that answer the goal. */
+  h2 { margin: 0 0 8px; font-size: 16px; line-height: 1.25; font-weight: 600; }
+  .column { min-height: 0; display: flex; flex-direction: column; gap: 22px; }
   .muted { color: var(--muted); }
   .num { font-variant-numeric: tabular-nums; }
   small { font-size: 12px; color: var(--muted); }
@@ -74,6 +80,8 @@
     -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent);
             mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent);
   }
+  /* Blocks of one column that follow each other are set apart by a hairline, so a title needs no other mark. */
+  .rule { border-top: 1px solid var(--line); padding-top: 16px; }
 
   /* Left: what to try. */
   input[type=text] {
@@ -84,7 +92,7 @@
   input::placeholder { color: var(--muted); }
   /* A choice among a few: words in a row, the current one underlined. The view tabs are the same thing. */
   .choice { display: flex; gap: 20px; align-items: baseline; }
-  .choice button { padding: 4px 0; border-radius: 0; color: var(--muted); border-bottom: 2px solid transparent; }
+  .choice button { padding: 4px 0; border-radius: 0; color: var(--muted); border-bottom: 2px solid transparent; white-space: nowrap; }
   .choice button:hover { color: var(--text); }
   .choice button[aria-pressed=true] { color: var(--text); border-color: var(--text); }
   /* Beside the choices, what acts on them: quieter, underlined like a link. */
@@ -93,10 +101,30 @@
   #profiles input { width: 130px; padding: 4px 0; font-size: 14px; }
   .setting output span { cursor: pointer; }
   .setting output span:hover { color: var(--text); text-decoration: underline; }
-  #settings { display: flex; flex-direction: column; gap: 8px; }
-  /* A line sets each group apart, so its title needs no other mark. */
-  #settings h2 { margin: 10px 0 0; padding-top: 14px; border-top: 1px solid var(--line); }
-  #settings h2:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
+  /* The sliders come in groups that open and close. The view on screen opens the groups that move what it
+     shows; a group opened or closed by hand stays so until the view changes. Its title row says how many of
+     its values left the pack's, so a closed group hides no change. The title stays in sight while its own
+     sliders scroll under it. */
+  .group > h2 { position: sticky; top: 0; z-index: 1; margin: 0; background: var(--ground); border-top: 1px solid var(--line); }
+  .group:last-of-type { border-bottom: 1px solid var(--line); }
+  .group > h2 button {
+    width: 100%; display: flex; align-items: baseline; gap: 10px; padding: 13px 0 6px;
+    font-weight: 600; text-align: left; border-radius: 0;
+  }
+  /* What scrolls under a title that stays fades into it, rather than being cut across a line. The fade
+     lies over the body's own top margin, so it touches nothing while the list is not scrolled. */
+  .group > h2::after { content: ""; position: absolute; left: 0; right: 0; top: 100%; height: 8px; pointer-events: none; background: linear-gradient(var(--ground), transparent); }
+  .group .note { margin-left: auto; font-size: 13px; font-weight: 400; color: var(--muted); }
+  /* Points down while there is something to open, up once it is open. */
+  .group .chevron {
+    flex: none; width: 7px; height: 7px; margin: 0 3px 0 2px; align-self: center; color: var(--muted);
+    border-right: 1.5px solid; border-bottom: 1.5px solid; transform: translateY(-2px) rotate(45deg); transition: transform 120ms;
+  }
+  .group > h2 button[aria-expanded=false] { padding-bottom: 12px; }
+  .group > h2 button:hover .chevron { color: var(--text); }
+  .group > h2 button[aria-expanded=true] .chevron { transform: translateY(2px) rotate(-135deg); }
+  .group .body { display: flex; flex-direction: column; gap: 10px; padding: 8px 0 20px; }
+  #settings > small { display: block; padding-top: 12px; }
   .setting { display: grid; grid-template-columns: 1fr auto; column-gap: 8px; align-items: baseline; }
   .setting label { font-size: 13px; }
   .setting output { font-weight: 600; }
@@ -117,16 +145,47 @@
     background: linear-gradient(var(--text), var(--text)) center / 2px 14px no-repeat;
   }
   .setting small { grid-column: 1 / -1; }
+  /* The ores under the ground: rows of numbers that show on the cut at once, unlike the sliders. */
+  .group .at-once { font-size: 13px; }
+  #addedActions { flex-wrap: wrap; gap: 0 16px; }
+  .ore-row { display: grid; grid-template-columns: 12px minmax(0, 1fr) 6ch 5ch 5ch 14px; gap: 10px; align-items: baseline; padding: 2px 0; font-size: 13px; }
+  .ore-row i { width: 12px; height: 12px; border-radius: 2px; align-self: center; box-shadow: inset 0 0 0 1px rgb(128 128 128 / 0.35); }
+  .ore-row.head { font-size: 12px; color: var(--muted); }
+  .ore-row.head span { text-align: right; }
+  .ore-row input {
+    width: 100%; padding: 2px 0; font: inherit; color: inherit; text-align: right; background: none;
+    border: 0; border-bottom: 1px solid var(--line); border-radius: 0; user-select: text; -moz-appearance: textfield;
+  }
+  .ore-row input::-webkit-inner-spin-button { -webkit-appearance: none; }
+  .ore-row input:focus { outline: none; border-color: var(--text); }
+  .ore-row button { padding: 0; color: var(--muted); }
+  .ore-row button:hover { color: var(--text); }
+  /* What the button says, on two lines at most whatever it says, so a message never moves the sliders. */
+  #status {
+    flex: none; height: 36px; font-size: 13px; line-height: 18px; color: var(--muted); overflow: hidden; overflow-wrap: anywhere;
+    display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+  }
+  #status.trouble { color: var(--warn); }
+  #run { flex: none; display: flex; flex-direction: column; gap: 8px; }
+  #controls { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 22px; }
+  /* On a short window the seed, the area and the head would leave the groups a sliver: everything above
+     the button scrolls as one list instead, the group titles still pinned, and the button and its line stay
+     at the foot. The spaces tighten a little, the button too. */
+  @media (max-height: 800px) {
+    body { padding-top: 16px; padding-bottom: 16px; }
+    .column { gap: 16px; }
+    #controls {
+      gap: 16px; overflow-y: auto; margin-right: -10px; padding: 0 10px 28px 0;
+      scrollbar-width: thin; scrollbar-color: var(--line) transparent;
+      -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent);
+              mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent);
+    }
+    #settings { flex: none; overflow: visible; margin-right: 0; padding: 0; -webkit-mask-image: none; mask-image: none; }
+    #run { gap: 6px; }
+    #generate { height: 40px; padding-top: 6px; }
+  }
   /* The button always says what it does. When there is nothing to compute it turns to grey
      stone, and the line above it says why. Its texture is drawn by the script, 16 texels high. */
-  /* The steps of a run, in one place: done with the second it ended at, under way, and a hairline
-     that fills as the wait goes. They stay after the run, to see where the time went. */
-  #steps { flex: none; display: flex; flex-direction: column; gap: 3px; font-size: 13px; }
-  .step { display: grid; grid-template-columns: 14px 1fr auto; gap: 6px; align-items: baseline; color: var(--muted); }
-  .step.now { color: var(--text); font-weight: 600; }
-  #steps .bar { height: 1px; margin: 5px 0 3px; background: linear-gradient(var(--text), var(--text)) 0 0 / calc(var(--share) * 100%) 100% no-repeat, var(--track); }
-  #status { min-height: 18px; font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
-  #status.trouble { color: var(--warn); }
   #generate {
     flex: none; height: 48px; padding: 9px 0 0; border-radius: 0; font-weight: 600; color: #fff;
     background-size: auto 100%; image-rendering: pixelated;
@@ -138,9 +197,10 @@
   /* While a run is under way the same button stops it: stone, but lit. */
   #generate.stop:not(:disabled) { filter: grayscale(1) brightness(0.85); }
 
-  /* Middle: the map. Tabs, map, legend and readout hang off one square, so they stay one block. */
-  #stage { flex: 1; min-height: 0; display: grid; place-items: start center; container-type: size; }
-  #frame { position: relative; margin-top: 40px; width: min(100cqw, 100cqh - 80px); aspect-ratio: 1; }
+  /* Middle: the map. Tabs, map and the lines under it hang off one square, so they stay one block. Room is
+     kept under the square for two lines: what is under the pointer, and the steps of the last run. */
+  #stage { --under: 76px; flex: 1; min-height: 0; display: grid; place-items: start center; container-type: size; }
+  #frame { position: relative; margin-top: 40px; width: min(100cqw, 100cqh - 40px - var(--under)); aspect-ratio: 1; }
   #flat, #map, #relief, #grid { position: absolute; inset: 0; width: 100%; height: 100%; }
   #relief canvas { display: block; width: 100%; height: 100%; }
   /* The flat map may be looked at closer: --k is how many times, --x and --y where its corner went, in widths of the square. */
@@ -149,7 +209,9 @@
     image-rendering: pixelated; cursor: crosshair; transition: opacity 200ms; touch-action: none;
     transform-origin: 0 0; transform: translate(calc(var(--x) * 100%), calc(var(--y) * 100%)) scale(var(--k));
   }
-  #frame.busy #map, #frame.busy #relief, #frame.busy #grid { opacity: 0.3; }
+  /* The marks of the structures are drawn finer than the map's points: they are smoothed, not blown up. */
+  #map.marks { image-rendering: auto; }
+  #frame.busy #map, #frame.busy #relief, #frame.busy #grid, #frame.busy #cut { opacity: 0.3; }
   /* One square of the grid is 1024 blocks. */
   #grid {
     pointer-events: none;
@@ -163,48 +225,76 @@
     background: linear-gradient(#fff, #fff) center / 15px 1px no-repeat, linear-gradient(#fff, #fff) center / 1px 15px no-repeat;
     filter: drop-shadow(0 0 1px #000) drop-shadow(0 0 1px #000);
   }
+  /* Where the section's cut runs: a tick on each edge of the map, outside it, so the map stays whole. */
+  #cutLine { position: absolute; left: -9px; right: -9px; height: 0; pointer-events: none; }
+  #cutLine::before, #cutLine::after { content: ""; position: absolute; top: -0.5px; width: 6px; height: 1px; background: var(--muted); }
+  #cutLine::before { left: 0; }
+  #cutLine::after { right: 0; }
   #note { position: absolute; inset: 0; display: grid; place-items: center; padding: 40px; text-align: center; color: var(--muted); pointer-events: none; }
   /* While the sketch of a run is on the map, the figures and the list still describe the map before: they step back. */
   #numbers.stale { opacity: 0.3; transition: opacity 200ms; }
   #tabs { position: absolute; left: 0; right: 0; bottom: calc(100% + 12px); }
+  /* The section is not a map: it stands a little apart from the views of the map. */
+  #tabs [data-view=section] { position: relative; margin-left: 16px; }
+  #tabs [data-view=section]::before { content: ""; position: absolute; left: -19px; top: 9px; height: 13px; border-left: 1px solid var(--line); }
   #tabs .apart { margin-left: auto; }
-  #under { position: absolute; left: 0; right: 0; top: calc(100% + 12px); font-size: 13px; }
-  #probe { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  /* The section takes the square's place: the cut on top, what is added to it underneath. */
-  #cut { position: absolute; inset: 0; display: flex; flex-direction: column; gap: 18px; }
-  #frame.busy #cut { opacity: 0.3; }
-  /* A cut is long and low: it takes the whole width the window gives, where the map keeps to a square. */
-  #frame.cut { width: 100cqw; height: calc(100cqh - 80px); aspect-ratio: auto; }
-  #cutView { flex: none; height: 46%; position: relative; overflow: hidden; cursor: crosshair; touch-action: none; border-bottom: 1px solid var(--line); }
-  #cutCanvas { position: absolute; left: 0; top: 0; image-rendering: pixelated; }
-  #added { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
-  #added .choice { flex-wrap: wrap; gap: 0 18px; }
-  .ore-row { display: grid; grid-template-columns: 12px minmax(0, 1fr) 9ch 7ch 7ch 16px; gap: 12px; align-items: baseline; padding: 3px 0; }
-  .ore-row i { width: 12px; height: 12px; border-radius: 2px; align-self: center; box-shadow: inset 0 0 0 1px rgb(128 128 128 / 0.35); }
-  .ore-row.head { font-size: 12px; color: var(--muted); }
-  .ore-row.head span { text-align: right; }
-  .ore-row input {
-    width: 100%; padding: 2px 0; font: inherit; color: inherit; text-align: right; background: none;
-    border: 0; border-bottom: 1px solid var(--line); border-radius: 0; user-select: text;
+  /* The tabs hold on one line over the narrowest map: one step smaller there, and a little closer. */
+  @media (max-width: 1100px) {
+    #tabs { gap: 12px; font-size: 13px; }
+    #tabs [data-view=section] { margin-left: 10px; }
+    #tabs [data-view=section]::before { left: -12px; top: 8px; }
   }
-  .ore-row input:focus { outline: none; border-color: var(--text); }
-  .ore-row button { padding: 0; color: var(--muted); }
-  .ore-row button:hover { color: var(--text); }
+  #under { position: absolute; left: 0; right: 0; top: calc(100% + 12px); display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+  #under .choice { gap: 18px; }
+  #probe { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* The steps of a run, under what it draws: done with the second it ended at, the one under way, and a
+     hairline that fills as the wait goes. They stay after the run, to see where the time went. Down here they
+     cost the sliders nothing, and the eye is on the map anyway while its sketches land. */
+  #steps { display: flex; flex-wrap: wrap; gap: 2px 16px; font-size: 12px; color: var(--muted); }
+  #steps .bar { flex: 0 0 100%; height: 1px; margin-bottom: 4px; background: linear-gradient(var(--text), var(--text)) 0 0 / calc(var(--share) * 100%) 100% no-repeat, var(--line); }
+  .step { white-space: nowrap; }
+  .step b { display: inline-block; width: 12px; font-weight: 400; }
+  .step.now { color: var(--text); }
+  /* The section takes the square's place: the whole cut drawn small, then the part looked at, at true scale. */
+  #frame.cut { width: 100cqw; height: calc(100cqh - 40px - var(--under)); aspect-ratio: auto; }
+  #cut { position: absolute; inset: 0; display: flex; flex-direction: column; gap: 8px; }
+  #nav { flex: none; position: relative; height: 56px; cursor: pointer; touch-action: none; border-bottom: 1px solid var(--line); }
+  #navCanvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+  /* The part looked at: a frame in the colour of the text, nothing filled. */
+  #navFrame { position: absolute; top: 0; bottom: 0; min-width: 5px; outline: 1px solid var(--text); outline-offset: -1px; cursor: grab; }
+  #navNote { flex: none; font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+  #cutView { flex: 1; min-height: 0; position: relative; overflow: hidden; cursor: crosshair; touch-action: none; border-bottom: 1px solid var(--line); }
+  #cutCanvas { position: absolute; inset: 0; width: 100%; height: 100%; }
 
-  /* Right: the numbers. */
-  .figures { display: grid; grid-template-columns: 1fr auto auto; gap: 5px 14px; align-items: baseline; }
+  /* Right: the numbers, then the list of what the view shows. */
+  #numbers { gap: 0; }
+  #numbers > .rule { margin-top: 22px; }
+  #numbers.cut > .rule { margin-top: 0; padding-top: 0; border-top: 0; }
+  #listBlock { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 6px; }
+  .figures { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 5px 14px; align-items: baseline; }
+  .figures > span[class=""] { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .figures .head { font-size: 12px; color: var(--muted); text-align: right; }
   .figures .value { font-weight: 600; text-align: right; }
   .figures .goal { font-size: 18px; }
   .figures .before { color: var(--muted); text-align: right; }
   /* On the figures of the goal, what moved is the answer: it reads as strongly as the value. */
   .figures .goal-change { color: var(--text); font-weight: 600; }
-  .figures .rule { grid-column: 1 / -1; height: 1px; margin: 6px 0; background: var(--line); }
+  .figures .rule { grid-column: 1 / -1; height: 1px; margin: 6px 0; padding: 0; border: 0; background: var(--line); }
   .biome {
-    width: 100%; display: grid; grid-template-columns: 12px 1fr auto auto; gap: 8px; align-items: center;
+    width: 100%; display: grid; grid-template-columns: 12px minmax(0, 1fr) auto auto; gap: 8px; align-items: center;
     padding: 4px 0; text-align: left; font-size: 13px;
   }
   .biome:hover .name { text-decoration: underline; }
+  /* The line over a part of the list reads like the heads of the columns: a note, not a title. Pressed, it
+     takes the colour of the text, as its part is then shown alone. */
+  .part {
+    width: 100%; display: grid; grid-template-columns: 12px minmax(0, 1fr) auto auto; gap: 8px; align-items: baseline;
+    padding: 12px 0 4px; text-align: left; font-size: 12px; color: var(--muted);
+  }
+  .part:first-child { padding-top: 2px; }
+  .part:hover span:nth-child(2) { text-decoration: underline; text-underline-offset: 3px; }
+  .part[aria-pressed=true] { color: var(--text); }
+  .part .share { min-width: 6ch; text-align: right; }
   /* The list mirrors the map: the chosen biomes stay lit, the others step back. */
   .biome[aria-pressed=true] .name { font-weight: 600; }
   #biomes.choosing .biome[aria-pressed=false] { opacity: 0.6; }
@@ -217,35 +307,45 @@
   #pick button.none { margin-left: 8px; text-decoration: underline; }
   /* A thin edge, so a white or pale swatch does not vanish on the light ground. */
   .biome i { width: 12px; height: 12px; border-radius: 2px; box-shadow: inset 0 0 0 1px rgb(128 128 128 / 0.35); }
+  /* A structure is a mark on the map, so its swatch is one too. */
+  .biome i.mark { width: 10px; height: 10px; margin: 1px; border-radius: 50%; box-shadow: 0 0 0 1px rgb(0 0 0 / 0.55); }
   .biome .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .biome .width { color: var(--muted); min-width: 8ch; text-align: right; }
   .biome .share { min-width: 6ch; text-align: right; }
-  .legend { display: grid; grid-template-columns: 12px 1fr auto auto; gap: 8px; font-size: 12px; color: var(--muted); }
+  .legend { display: grid; grid-template-columns: 12px minmax(0, 1fr) auto auto; gap: 8px; font-size: 12px; color: var(--muted); }
   .legend .width { min-width: 8ch; text-align: right; }
   .legend .share { min-width: 6ch; text-align: right; }
+  @media (max-width: 1100px) {
+    /* The figures keep each name on one line: a step smaller, the goal's figures down to the titles' size. */
+    .figures { gap: 5px 10px; font-size: 13px; }
+    .figures .goal { font-size: 16px; }
+    .biome .width, .legend .width { min-width: 7ch; }
+    .biome .share, .legend .share { min-width: 5ch; }
+  }
 </style>
 </head>
 <body>
   <section class="column">
-    <div>
-      <h2 data-text="seed"></h2>
-      <input type="text" id="seed" maxlength="64" spellcheck="false">
-    </div>
-    <div>
+    <div id="controls">
+      <div>
+        <h2 data-text="seed"></h2>
+        <input type="text" id="seed" maxlength="64" spellcheck="false">
+      </div>
       <div class="setting">
         <h2 data-text="span"></h2><output class="num" id="areaValue" for="area"></output>
         <input type="range" id="area" min="256" max="2048" step="256">
         <small id="areaHint"></small>
       </div>
+      <div>
+        <h2 data-text="profiles"></h2>
+        <div id="profiles" class="choice"></div>
+      </div>
+      <div id="settings" class="scroll"></div>
     </div>
-    <div>
-      <h2 data-text="profiles"></h2>
-      <div id="profiles" class="choice"></div>
+    <div id="run">
+      <div id="status" role="status"></div>
+      <button id="generate" data-text="generate"></button>
     </div>
-    <div id="settings" class="scroll"></div>
-    <div id="steps" hidden></div>
-    <div id="status" role="status"></div>
-    <button id="generate" data-text="generate"></button>
   </section>
 
   <section class="column">
@@ -256,31 +356,32 @@
           <canvas id="map"></canvas>
           <div id="grid" hidden></div>
         </div>
+        <div id="cutLine" hidden></div>
         <div id="relief" hidden></div>
         <div id="cut" hidden>
+          <div id="nav"><canvas id="navCanvas"></canvas><div id="navFrame"></div></div>
+          <div id="navNote" class="num"></div>
           <div id="cutView"><canvas id="cutCanvas"></canvas></div>
-          <div id="added">
-            <div class="choice"><h2 data-text="addedTitle"></h2><span id="addedActions" class="choice"></span></div>
-            <small data-text="addedHint"></small>
-            <div id="oreRows" class="scroll num"></div>
-          </div>
         </div>
         <div id="note"></div>
-        <div id="under" class="choice">
-          <div id="probe" class="num muted"></div>
-          <button id="nextCut" class="action" data-text="nextCut" hidden></button>
-          <button id="export" class="action" data-text="export"></button>
+        <div id="under">
+          <div class="choice">
+            <div id="probe" class="num muted"></div>
+            <button id="nextCut" class="action" data-text="nextCut" hidden></button>
+            <button id="export" class="action" data-text="export"></button>
+          </div>
+          <div id="steps" class="num"></div>
         </div>
       </div>
     </div>
   </section>
 
   <section class="column" id="numbers">
-    <div>
+    <div id="figuresBlock">
       <h2 data-text="figures"></h2>
       <div class="figures num" id="figures"></div>
     </div>
-    <div class="column" style="flex:1; gap:6px">
+    <div id="listBlock" class="rule">
       <div>
         <h2 id="listTitle"></h2>
         <input type="text" id="filter" spellcheck="false">
@@ -303,7 +404,7 @@
     generate: 'Generate preview',
     upToDate: 'The map shows these settings.',
     stop: 'Stop',
-    running: (elapsed, about) => `${elapsed} of about ${about}`,
+    running: (elapsed, about) => `${elapsed} of about ${about}.`,
     steps: {
       start: 'Starting the game',
       sketch: step => `Sketch, every ${step} blocks`,
@@ -325,17 +426,25 @@
     close: '≈',
     points: ' pt',
     // What the list beside the map holds in each view: [its title, the name of its first column].
-    lists: { biomes: ['Biomes', 'biome'], flat: ['Ground', 'ground'], height: ['Heights', 'height'], temperature: ['Temperatures', 'climate'] },
+    lists: { biomes: ['Biomes', 'biome'], flat: ['Ground', 'ground'], height: ['Heights', 'height'], temperature: ['Temperatures', 'climate'], structures: ['Structures', 'structure'] },
     heightBands: (sea, steps) => ['Under the sea', ...steps.map((top, i) => `${i ? steps[i - 1] : sea} to ${top}`), `Above ${steps.at(-1)}`],
     pickHint: 'Click rows, here or on the map.',
+    // The structures built under the ground step back while nothing is chosen: said where the list starts.
+    pickHintUnder: 'Click rows, here or on the map. Grey dots: built under the ground.',
     pickedMany: count => `${count} chosen`,
     pickedShare: share => ` · ${share} of the area`,
+    pickedCount: (count, of) => ` · ${count} of ${of}`,
     pickRemove: name => `Remove ${name}`,
     pickNone: 'Show all',
     filter: 'Filter by name…',
     colWidth: 'typical width',
     colShare: 'share',
-    groups: { biomes: 'Biome size and climate', relief: 'Relief', continents: 'Continents and oceans' },
+    colSpacing: 'one every',
+    colSpacingHint: 'About how far apart two of them are: the side of the square each has to itself on this area.',
+    colCount: 'count',
+    groups: { biomes: 'Biome size and climate', relief: 'Relief', continents: 'Continents and oceans', ores: 'Ores under the ground' },
+    changed: count => `${count} changed`,
+    changedHint: 'Values that differ from the pack’s',
     // Each hint says what changes in the world, in the direction that grows it.
     settings: {
       temperature_scale:      ['Temperature scale', 'Lower: wider warm and cold zones.'],
@@ -361,16 +470,21 @@
     profileDelete: 'Delete',
     profileName: 'Name',
     profileDefault: n => `Try ${n}`,
-    views: { biomes: 'Biomes', flat: 'Flat', height: 'Relief', temperature: 'Temperature' },
+    views: { biomes: 'Biomes', flat: 'Flat', height: 'Relief', temperature: 'Temperature', structures: 'Structures' },
     shapes: { flat2d: '2D', relief3d: '3D' },
     done: wait => `Preview ready in ${wait}.`,
-    failed: 'The run failed. Try again; if it fails again, look at last-run.log in the preview folder.',
+    failed: 'The run failed. Try again, then see last-run.log in the preview folder.',
     refused: 'Seed refused: it takes letters, digits, spaces and hyphens.',
     noPreview: 'No preview yet. Choose a seed and generate one.',
     no3d: 'The 3D view could not load (it needs the internet the first time).',
     serverGone: 'The preview server has stopped. Close this window and open it again.',
     probe: (x, z, y, biome) => `x ${x}   z ${z}   height ${y}   ${biome}`,
-    area: (blocks, square) => `${blocks} × ${blocks} blocks, north up. One square: ${square} blocks. Cross: 0,0.`,
+    area: (blocks, square, cut) => `${blocks} × ${blocks} blocks, north up. One square: ${square} blocks. Cross: 0,0.${cut ? ' Ticks: the cut.' : ''}`,
+    // The structures: where each would start, as the generator places them.
+    noStructures: 'No structures for this preview. Generate it again.',
+    parts: ['On the surface', 'Under the ground'],
+    partHint: 'Click to show this part alone; again to show all.',
+    structureProbe: (x, z, name) => `x ${x}   z ${z}   ${name}`,
     // [name, a short note beside it, the definition shown on hover]
     figureNames: {
       flat:    ['Flat land', '', 'Share of the land. Flat: the ground moves by 2 blocks at most to the neighbour points, 16 blocks away. A lone flat point does not count.'],
@@ -388,7 +502,8 @@
     noSection: 'No section for this preview. Generate it again.',
     nextCut: 'Another cut',
     nextCutHint: 'The cuts are the lines of this map that cross the most different ground: a height, some sea, some level land.',
-    cutRest: (at, of, z, from, to) => `Cut ${at} of ${of}, west to east at z ${z}, from x ${from} to ${to}. True scale. Wheel: closer.`,
+    cutRest: (at, of, z, from, to) => `Cut ${at} of ${of}, west to east at z ${z}, x ${from} to ${to}. True scale. Wheel: closer.`,
+    navNote: times => `The whole cut, heights × ${times}. Click or drag the frame to look along it.`,
     cutProbe: (x, y, depth, what, biome) => `x ${x}   height ${y}   ${depth}   ${what}   ${biome}`,
     cutDepth: depth => depth > 0 ? `${depth} under the ground` : 'above the ground',
     cutCells: ['Air', 'Rock', 'Water', 'Lava'],
@@ -396,13 +511,15 @@
     ores: { coal: 'Coal', copper: 'Copper', iron: 'Iron', gold: 'Gold', lapis: 'Lapis', redstone: 'Redstone', diamond: 'Diamond', emerald: 'Emerald' },
     oreList: ['Ores', 'ore'],
     oreColumns: ['low ground', 'high ground'],
-    oreColumnsHint: 'Blocks of ore per chunk within 64 blocks under the ground: where the ground is under height 80, and from 80 up. Played four times on this cut.',
+    oreColumnsHint: plays => `Blocks of ore per chunk within 64 blocks under the ground: where the ground is under height 80, and from 80 up. Counted over ${plays} chunks played along this cut.`,
     orePickHint: 'Click an ore to see it alone.',
     oreFrom: rules => `From: ${rules}`,
     oreUnplayed: count => `${count} ore rules use a placement step this page cannot play: they are left out.`,
-    addedTitle: 'Added under the ground',
-    addedHint: 'Ores placed at a depth counted from the ground, on top of the others. A change shows at once and stays in this window: nothing is written to the pack. The ground is the generator’s; the ores are played here from the rules the server loaded, counted over a slice 16 blocks thick and drawn over 4.',
-    addedHead: ['', '', 'tries per chunk', 'from', 'to', ''],
+    addedAtOnce: 'These show on the cut at once, without Generate.',
+    addedNone: 'No ore counted from the ground yet: add one.',
+    addedHint: 'Ores placed at a depth counted from the ground, on top of the others. Kept in this window, never written to the pack. The ground is the generator’s; the ores are a play of the server’s rules on it, not the blocks a world would hold.',
+    addedHead: ['', '', 'tries', 'from', 'to', ''],
+    addedCountHint: 'Tries per chunk',
     addedDepthHint: 'Blocks under the ground, from the nearest to the deepest.',
     addedAdd: name => `+ ${name}`,
     addedRemove: 'Remove',
@@ -572,10 +689,57 @@
     $('profiles').replaceChildren(...items);
   }
 
+  // The groups open and close. Looking at a view opens the groups whose values move what it shows and
+  // closes the others; what is opened or closed by hand holds until the view changes. No group is ever
+  // left out of the list, and its title row counts its changed values, so nothing changed is out of sight.
+  const opensFor = { biomes: ['biomes', 'continents'], flat: ['relief'], height: ['relief', 'continents'],
+                     temperature: ['biomes'], structures: ['biomes'], section: ['ores', 'relief'] };
+  const groups = {};
+  function makeGroup(key) {
+    const box = document.createElement('section');
+    box.className = 'group';
+    box.innerHTML = '<h2><button aria-expanded="false"><span></span><span class="note num"></span><span class="chevron"></span></button></h2><div class="body"></div>';
+    const button = box.querySelector('button'), body = box.querySelector('.body');
+    button.children[0].textContent = text.groups[key];
+    body.id = `group-${key}`;
+    button.setAttribute('aria-controls', body.id);
+    button.addEventListener('click', () => openGroup(key, button.getAttribute('aria-expanded') !== 'true'));
+    groups[key] = { box, button, body, note: button.children[1] };
+    $('settings').append(box);
+    return body;
+  }
+  function openGroup(key, open) {
+    groups[key].button.setAttribute('aria-expanded', open);
+    groups[key].body.hidden = !open;
+  }
+  // The first group a view names is the one it is most about: the list scrolls as little as it takes to
+  // show it whole, or from its title when it is taller than the list.
+  function openGroupsFor(shown, scroll = true) {
+    for (const key in groups) openGroup(key, opensFor[shown].includes(key));
+    // A window just opened starts at its top, on the seed.
+    if (!scroll) return;
+    // What scrolls is the list of groups, or on a short window the whole column above the button.
+    const list = getComputedStyle($('controls')).overflowY === 'auto' ? $('controls') : $('settings');
+    const first = groups[opensFor[shown][0]].box;
+    const top = first.getBoundingClientRect().top - list.getBoundingClientRect().top + list.scrollTop;
+    // The list's own room, less the fade at its foot.
+    const room = list.clientHeight - 28;
+    if (first.hidden) { list.scrollTop = 0; return; }
+    const need = first.offsetHeight > room ? top : Math.max(0, top + first.offsetHeight - room);
+    // The list starts on the title of a group, never on the tail of one: a lone hint under a pinned title
+    // reads as something broken.
+    const starts = [0, ...Object.values(groups).filter(g => !g.box.hidden)
+      .map(g => g.box.getBoundingClientRect().top - list.getBoundingClientRect().top + list.scrollTop)];
+    list.scrollTop = Math.min(top, ...starts.filter(at => at >= need - 0.5));
+  }
+  function showNote(key, count) {
+    groups[key].note.textContent = count ? text.changed(count) : '';
+    groups[key].note.title = count ? text.changedHint : '';
+  }
+  const changedIn = group => Object.keys(ranges[group]).filter(key => inputs[key] && Math.abs(inputs[key].value - packValues[key]) > 1e-9).length;
+
   for (const [group, keys] of Object.entries(ranges)) {
-    const title = document.createElement('h2');
-    title.textContent = text.groups[group];
-    $('settings').append(title);
+    const body = makeGroup(group);
     for (const [key, [min, max, step]] of Object.entries(keys)) {
       const [label, hint] = text.settings[key];
       const digits = step < 0.01 ? 3 : 2;
@@ -600,15 +764,24 @@
           pack.addEventListener('click', () => { input.value = packValues[key]; show(); });
           output.prepend(pack);
         }
+        showNote(group, changedIn(group));
         showButton();
         if (!naming) showProfiles();
       };
       input.addEventListener('input', show);
       input.addEventListener('dblclick', () => { input.value = packValues[key]; show(); });
       inputs[key] = input;
+      body.append(row);
       show();
-      $('settings').append(row);
     }
+  }
+  // The ores under the ground: rows that the section plays at once. The group is there when the preview has a section.
+  {
+    const body = makeGroup('ores');
+    body.innerHTML = '<div class="at-once"></div><div id="addedActions" class="choice"></div><div id="oreRows" class="num"></div><small></small>';
+    body.children[0].textContent = text.addedAtOnce;
+    body.children[3].textContent = text.addedHint;
+    groups.ores.box.hidden = true;
   }
   const resetHint = document.createElement('small');
   resetHint.textContent = text.resetHint;
@@ -665,6 +838,40 @@
     const vary = hashOf(id);
     return hslToRgb((h + (vary - 0.5) * 22 + 360) % 360, s, Math.max(12, Math.min(92, l + (hashOf(id + '!') - 0.5) * 16)));
   }
+  // A structure's colour comes from its family, as a biome's does. What is built on the surface is what the
+  // view is looked at for, so each surface family gets a hue far from the others' (villages green, ocean
+  // ruins teal, monuments blue, portals violet, temples and towers pink, outposts red, wrecks orange, rubble
+  // yellow), and the members of a family share it in shades. What is built under the ground comes first, so
+  // a mod's "underground/mining_outpost" is not taken for an outpost. The set is read with the id, so a
+  // mod's village joins the villages; the namespace is not, or a mod named after dungeons would make all
+  // its structures dungeons. [hue, saturation, lightness].
+  const structureFamilies = [
+    [/underground|mineshaft|ancient_city|stronghold|trial|dungeon|catacomb|crypt|mines\b/, [214, 60, 66]],
+    [/treasure|buried/, [52, 92, 56]],
+    [/village|town|settlement|hamlet/, [100, 62, 48]],
+    [/monument/, [226, 78, 62]],
+    [/ocean_ruin|underwater|coral/, [174, 70, 42]],
+    [/portal/, [282, 58, 66]],
+    [/pyramid|temple|hut|igloo|mansion|tower|spire|castle|palace|keep|fort|lodge|mage/, [326, 64, 68]],
+    [/outpost|pillager|illager|bandit|raid/, [0, 76, 56]],
+    [/shipwreck|ship|boat|typhon|pirate/, [24, 82, 52]],
+    [/rubble/, [48, 70, 60]],
+    // A camp left behind is neither an outpost nor a wreck: a quiet earth colour.
+    [/camp/, [30, 28, 58]],
+    [/ruin|trail/, [40, 38, 64]],
+  ];
+  function structureColour(id, set) {
+    const name = `${id.split(':').pop()} ${`${set ?? ''}`.split(':').pop()}`;
+    const family = structureFamilies.find(([pattern]) => pattern.test(name));
+    // A family no rule knows still gets a hue of its own, from its set, but a quieter one.
+    const [h, s, l] = family ? family[1] : [hashOf(`${set ?? id}`) * 360, 34, 62];
+    return hslToRgb((h + (hashOf(id) - 0.5) * 14 + 360) % 360, s, l + (hashOf(id + '!') - 0.5) * 12);
+  }
+  // Built under the ground, or on the surface. The step a structure declares says it for the game's own
+  // ("underground_structures", "underground_decoration"), but a mod may declare its buried ones as surface
+  // structures (Terralith does), so a name that says "underground" counts too; strongholds are deep whatever
+  // their step says. An older file without steps falls back on the names alone.
+  const underground = (id, step) => /^underground/.test(step ?? '') || /underground/.test(id) || id === 'minecraft:stronghold';
   const isWater = id => /ocean|river/.test(id);
   // Height above the sea: lowland green, then ochre, rock, snow. Below: deeper is darker.
   function heightColour(y, sea) {
@@ -689,9 +896,9 @@
   const quietWater = hslToRgb(212, 22, 20);
   const css = c => `rgb(${c})`;
 
-  // The name alone: which mod a biome comes from does not help to judge the world. The id stays on hover.
+  // The name alone: which mod a biome or a structure comes from does not help to judge the world. The id stays on hover.
   const pretty = id => {
-    const words = id.split(':')[1].replaceAll('_', ' ');
+    const words = id.split(':').pop().replace(/[_/]+/g, ' ');
     return words[0].toUpperCase() + words.slice(1);
   };
 
@@ -702,7 +909,7 @@
   let in3d = false;
   // What is shown alone in each view, by id: biomes, or bands of ground, height, temperature. A choice
   // lives through the next run, to follow a biome from one try to the other.
-  const chosen = { biomes: new Set(), flat: new Set(), height: new Set(), temperature: new Set(), section: new Set() };
+  const chosen = { biomes: new Set(), flat: new Set(), height: new Set(), temperature: new Set(), structures: new Set(), section: new Set() };
   // Where one band of height ends and the next starts, above the sea.
   const heightSteps = [100, 150, 200, 250];
   // The figures of the run before this one. Kept by the browser, so a reload does not lose them.
@@ -730,7 +937,26 @@
     }
     showSpan();
     const colours = meta.biomes.map(b => biomeColour(b.id));
-    return { ...meta, heights, biomeAt: biomes, colours, ...measure(meta, heights, biomes), section: await loadSection() };
+    const [section, structures] = await Promise.all([loadSection(), loadStructures()]);
+    return { ...meta, heights, biomeAt: biomes, colours, ...measure(meta, heights, biomes), section, structures };
+  }
+
+  // Where each structure would start, as the generator places them on this square: one row per place, the
+  // kind as an index into the list of kinds. Older previews have no such file.
+  async function loadStructures() {
+    const data = await fetch('/preview/data/structures.json').then(r => r.ok ? r.json() : null).catch(() => null);
+    if (!Array.isArray(data?.structures) || !Array.isArray(data.points)) return null;
+    const kinds = data.structures.length, count = new Float64Array(kinds);
+    const points = data.points.filter(([kind]) => kind >= 0 && kind < kinds);
+    const byKind = Array.from({ length: kinds }, () => []);
+    for (const point of points) { count[point[0]]++; byKind[point[0]].push(point); }
+    return {
+      ids: data.structures.map(s => s.id), points, count, byKind,
+      colours: data.structures.map(s => structureColour(s.id, s.set)),
+      under: data.structures.map(s => underground(s.id, s.step)),
+      // Drawn kind by kind, the most frequent first, so the rare ones lie over them.
+      order: data.structures.map((_, i) => i).filter(i => count[i]).sort((a, b) => count[b] - count[a]),
+    };
   }
 
   // The sketches a run writes first: the same square with fewer points, each finer than the one
@@ -836,7 +1062,14 @@
     // Nothing is measured on a sketch.
     if (world.sketch) return null;
     world.lists ??= {};
+    if (kind === 'structures') return world.structures ? world.lists[kind] ??= structureList() : null;
     return world.lists[kind] ??= bands(kind);
+  }
+  // Structures are counted, not measured in area: a row gives how many there are, and about how far apart.
+  function structureList() {
+    const s = world.structures, area = (world.samples * world.step) ** 2;
+    return { at: null, counted: true, ids: s.ids, names: s.ids.map(pretty), colours: s.colours, cells: s.count,
+             widths: Array.from(s.count, c => c ? Math.sqrt(area / c) : 0), total: s.points.length };
   }
   function bands(kind) {
     const n = world.samples, total = n * n, sea = world.seaLevel, h = world.heights, at = new Uint8Array(total);
@@ -876,15 +1109,19 @@
   function paint() {
     if (!world) return;
     if (view === 'section' && !exporting) { drawingCut = showCut(); return; }
+    const marks = view === 'structures';
+    map.classList.toggle('marks', marks);
+    // The land under the structures does not change when the marks do: it is kept, and only the marks are drawn again.
+    if (marks && quiet?.world === world && quiet.dark === scheme.matches) { drawMarks(); return; }
     const n = world.samples, total = n * n, h = world.heights, sea = world.seaLevel, at = world.biomeAt;
-    map.width = map.height = n;
+    if (!marks) map.width = map.height = n;
     const image = pen.createImageData(n, n), px = image.data;
     // What is not a chosen biome steps back towards the ground: water, then land.
     const stepBack = scheme.matches ? [16, 40] : [200, 226];
     // The line between two zones that stepped back: a little towards the text's side of the ground.
     const fadedLine = scheme.matches ? 1.3 : 0.92;
     // The choice of this view only. A chosen row this world does not have dims nothing.
-    const list = listOf(view), rowAt = list?.at;
+    const list = marks ? null : listOf(view), rowAt = list?.at;
     const lit = list ? list.ids.map(id => chosen[view].has(id)) : [], choosing = !exporting && lit.includes(true);
     for (let i = 0; i < total; i++) {
       const biome = at[i], y = h[i], x = i % n, water = y < sea;
@@ -904,6 +1141,10 @@
         c = [g, g, g]; shade = clamp(1 + slope * 0.004, 0.9, 1.1);
         // What stepped back keeps a trace of its zones, so a chosen biome is still read among its neighbours.
         if (border && view === 'biomes') shade *= fadedLine;
+      } else if (marks) {
+        // The land stepped back, its relief a little stronger than a choice leaves it, to place the marks on.
+        const g = stepBack[water ? 0 : 1];
+        c = [g, g, g]; shade = water ? 1 : clamp(1 + slope * 0.008, 0.82, 1.18);
       } else if (view === 'height') {
         c = heightColour(y, sea); shade = clamp(1 + slope * 0.012, 0.75, 1.25);
       } else if (view === 'temperature') {
@@ -923,8 +1164,69 @@
       }
       px[i * 4] = c[0] * shade; px[i * 4 + 1] = c[1] * shade; px[i * 4 + 2] = c[2] * shade; px[i * 4 + 3] = 255;
     }
+    if (marks) {
+      const land = document.createElement('canvas');
+      land.width = land.height = n;
+      land.getContext('2d').putImageData(image, 0, 0);
+      quiet = { world, dark: scheme.matches, land };
+      drawMarks();
+      return;
+    }
     pen.putImageData(image, 0, 0);
     if (in3d && !exporting) drawing3d = refresh3d();
+  }
+
+  // The structures' canvas is 2048 pixels a side whatever the area: a mark is drawn finer than a point of the
+  // map, so it stays round and crisp from 256 to 2048 points a side, and in 3D, where the canvas is the texture.
+  const marksSide = 2048;
+  let quiet = null;   // the land under the marks, at the map's own points: { world, dark, land }
+  function drawMarks() {
+    const s = world.structures, n = world.samples;
+    map.width = map.height = marksSide;
+    pen.imageSmoothingEnabled = false;
+    pen.drawImage(quiet.land, 0, 0, marksSide, marksSide);
+    if (s) {
+      // A mark keeps about its size on screen however close the map is looked at, growing a little as it
+      // comes closer. Seen in 3D or in an exported picture, from afar, it is a little larger.
+      const far = in3d || exporting, shown = $('flat').clientWidth || $('relief').clientWidth || 700;
+      const pixel = marksSide / shown / (far ? 1 : look.k ** 0.8);
+      const radius = (far ? 4.5 : 3.5) * pixel, toCanvas = marksSide / (n * world.step);
+      const picked = chosen.structures, choosing = !exporting && s.ids.some(id => picked.has(id));
+      // With nothing chosen, what is built under the ground steps back: there are far more of them, and the
+      // view is opened for what can be seen from the surface. A choice lights what it names, buried or not.
+      const lit = kind => choosing ? picked.has(s.ids[kind]) : !s.under[kind];
+      // What is not lit steps back to a small grey dot: still a place, no longer a kind.
+      const dot = (kind, r) => {
+        pen.beginPath();
+        for (const [, x, z] of s.byKind[kind]) {
+          const cx = (x - world.originX) * toCanvas, cy = (z - world.originZ) * toCanvas;
+          pen.moveTo(cx + r, cy); pen.arc(cx, cy, r, 0, 2 * Math.PI);
+        }
+      };
+      pen.fillStyle = scheme.matches ? '#6a6a6a' : '#8a8a86';
+      for (const kind of s.order) if (!lit(kind)) { dot(kind, radius * 0.45); pen.fill(); }
+      // A dark ring keeps a pale mark apart from pale ground, and two touching marks apart from each other.
+      pen.lineWidth = pixel; pen.strokeStyle = 'rgb(0 0 0 / 0.7)';
+      for (const kind of s.order) if (lit(kind)) {
+        dot(kind, radius);
+        pen.fillStyle = css(s.colours[kind]); pen.fill(); pen.stroke();
+      }
+    }
+    if (in3d && !exporting) drawing3d = refresh3d();
+  }
+  // The nearest structure to a point of the screen, if one is close enough to be the one pointed at.
+  function structureNear(event) {
+    const s = world?.structures;
+    if (!s || world.sketch) return null;
+    const box = map.getBoundingClientRect(), span = world.samples * world.step;
+    const x = world.originX + (event.clientX - box.left) / box.width * span, z = world.originZ + (event.clientY - box.top) / box.height * span;
+    // Within about the mark's own radius, a little more.
+    let best = null, reach = (6 * span / box.width) ** 2;
+    for (const point of s.points) {
+      const d = (point[1] - x) ** 2 + (point[2] - z) ** 2;
+      if (d < reach) { reach = d; best = point; }
+    }
+    return best;
   }
 
   function showFigures() {
@@ -967,25 +1269,53 @@
   function showList() {
     // The section's list is its ores, filled when the cut is drawn.
     if (view === 'section') return;
-    for (const [i, key] of ['colWidth', 'colShare'].entries()) { const head = $('listHead').children[i + 2]; head.textContent = text[key]; head.title = ''; }
-    const list = listOf(view), total = world.samples ** 2;
+    const list = listOf(view), total = world.samples ** 2, counted = view === 'structures';
+    const heads = counted ? [[text.colSpacing, text.colSpacingHint], [text.colCount, '']] : [[text.colWidth, ''], [text.colShare, '']];
+    heads.forEach(([name, hint], i) => { const head = $('listHead').children[i + 2]; head.textContent = name; head.title = hint; });
     [$('listTitle').textContent, $('listColumn').textContent] = text.lists[view];
-    $('filter').hidden = view !== 'biomes';
-    // Biomes by share. Bands keep their own order, lowest or coldest first; one this world does not have is left out.
-    const order = list.ids.map((_, i) => i).filter(i => list.cells[i]);
-    if (view === 'biomes') order.sort((a, b) => list.cells[b] - list.cells[a]);
-    $('biomes').replaceChildren(...order.map(i => {
+    // A long list of names gets a filter: the biomes, and the structures a mod may add by dozens.
+    $('filter').hidden = !list || (view !== 'biomes' && !counted);
+    $('listHead').hidden = !list;
+    // Biomes by share, structures by count. Bands keep their own order, lowest or coldest first; one this world does not have is left out.
+    const order = list ? list.ids.map((_, i) => i).filter(i => list.cells[i]) : [];
+    if (view === 'biomes' || counted) order.sort((a, b) => list.cells[b] - list.cells[a]);
+    const makeRow = i => {
       const row = document.createElement('button');
       row.className = 'biome num';
       row.dataset.id = list.ids[i];
       row.innerHTML = '<i></i><span class="name"></span><span class="width"></span><span class="share"></span>';
       row.children[0].style.background = css(list.colours[i]);
+      if (counted) row.children[0].className = 'mark';
       row.children[1].textContent = list.names[i];
-      if (view === 'biomes') row.title = list.ids[i];
+      if (view === 'biomes' || counted) row.title = list.ids[i];
       row.children[2].textContent = blocks(list.widths[i]);
-      row.children[3].textContent = percent(100 * list.cells[i] / total);
+      row.children[3].textContent = counted ? num(list.cells[i]) : percent(100 * list.cells[i] / total);
       row.addEventListener('click', () => choose(list.ids[i]));
       return row;
+    };
+    if (!counted) { $('biomes').replaceChildren(...order.map(makeRow)); showChoice(); return; }
+    // The structures come in two parts, what is built on the surface and what is built under the ground,
+    // each under a quiet line of its own that shows the whole part alone.
+    const s = world.structures;
+    $('biomes').replaceChildren(...[false, true].flatMap(under => {
+      const rows = order.filter(i => s.under[i] === under);
+      if (!rows.length) return [];
+      const head = document.createElement('button');
+      head.className = 'part num';
+      head.dataset.part = under ? 'under' : 'surface';
+      head.innerHTML = '<span></span><span></span><span></span><span class="share"></span>';
+      head.children[1].textContent = text.parts[+under];
+      head.children[3].textContent = num(rows.reduce((sum, i) => sum + list.cells[i], 0));
+      head.title = text.partHint;
+      head.addEventListener('click', () => {
+        const picked = chosen.structures, ids = rows.map(i => list.ids[i]);
+        const alone = picked.size === ids.length && ids.every(id => picked.has(id));
+        picked.clear();
+        if (!alone) for (const id of ids) picked.add(id);
+        showChoice(); paint();
+      });
+      head.partIds = rows.map(i => list.ids[i]);
+      return [head, ...rows.map(makeRow)];
     }));
     showChoice();
   }
@@ -999,18 +1329,25 @@
   // The rows are not rebuilt, so the list stays where it was scrolled.
   function showChoice() {
     const list = listOf(view), picked = chosen[view];
-    const asked = view === 'biomes' ? $('filter').value.trim().toLowerCase() : '';
+    if (!list) { $('pick').replaceChildren(); return; }
+    const asked = !$('filter').hidden ? $('filter').value.trim().toLowerCase() : '';
     const rows = [];
     let cells = 0;
     list.ids.forEach((id, i) => { if (picked.has(id) && list.cells[i]) { cells += list.cells[i]; rows.push(i); } });
     $('biomes').classList.toggle('choosing', rows.length > 0);
     for (const row of $('biomes').children) {
+      if (row.partIds) continue;
       const on = picked.has(row.dataset.id);
       row.setAttribute('aria-pressed', on);
       // The filter reads the id too, so the name of a mod finds its biomes. A chosen biome stays in sight.
       row.hidden = !on && !!asked && !row.dataset.id.replaceAll('_', ' ').includes(asked);
     }
-    if (!rows.length) { $('pick').replaceChildren(text.pickHint); return; }
+    // A part's line is pressed when its part is shown alone, and goes when the filter leaves the part empty.
+    for (const head of $('biomes').querySelectorAll('.part')) {
+      head.setAttribute('aria-pressed', picked.size === head.partIds.length && head.partIds.every(id => picked.has(id)));
+      head.hidden = !head.partIds.some(id => !$('biomes').querySelector(`[data-id="${CSS.escape(id)}"]`).hidden);
+    }
+    if (!rows.length) { $('pick').replaceChildren(view === 'structures' ? text.pickHintUnder : text.pickHint); return; }
     const none = document.createElement('button');
     none.textContent = text.pickNone;
     none.addEventListener('click', () => { picked.clear(); showChoice(); paint(); });
@@ -1023,16 +1360,17 @@
       name.addEventListener('click', () => choose(list.ids[i]));
       return at ? [', ', name] : [name];
     });
-    $('pick').replaceChildren(...parts, text.pickedShare(percent(100 * cells / world.samples ** 2)), none);
+    $('pick').replaceChildren(...parts, list.counted ? text.pickedCount(num(cells), num(list.total)) : text.pickedShare(percent(100 * cells / world.samples ** 2)), none);
   }
   $('filter').addEventListener('input', () => { if (world && !world.sketch && view !== 'section') showChoice(); });
 
   const restProbe = () => {
     if (view === 'section') { restCut(); return; }
-    if (world) $('probe').textContent = text.area(num(world.samples * world.step), num(world.samples * world.step / 8));
+    if (!world) return;
+    $('probe').textContent = text.area(num(world.samples * world.step), num(world.samples * world.step / 8), !$('cutLine').hidden);
   };
   function showWorld() {
-    showTabs(); showFigures(); showList(); restProbe(); showButton();
+    showRows(); showTabs(); showFigures(); showList(); restProbe(); showButton();
   }
 
   const pointUnder = event => {
@@ -1045,9 +1383,21 @@
   // The flat map moves like the relief does: the wheel comes closer to the point under it, a press that
   // travels carries the map. A press that stays in place is still the click that chooses a biome.
   const flat = $('flat'), look = { k: 1, x: 0, y: 0 };
+  let marking = 0;
   function showLook() {
     look.x = clamp(look.x, 1 - look.k, 0); look.y = clamp(look.y, 1 - look.k, 0);
     for (const key in look) flat.style.setProperty(`--${key}`, look[key]);
+    showCutLine();
+    // The marks keep their size on screen: drawn again once per frame at most.
+    if (view === 'structures' && quiet?.world === world && !marking) marking = requestAnimationFrame(() => { marking = 0; drawMarks(); });
+  }
+  // Where the section's cut runs on the map: its line of the map, followed as the map is looked at closer.
+  function showCutLine() {
+    const section = world?.section, line = $('cutLine');
+    const at = section && !world.sketch ? (section.cuts[section.at].z - world.originZ) / (world.samples * world.step) : -1;
+    const y = look.y + at * look.k;
+    line.hidden = view === 'section' || in3d || $('flat').hidden || !(at >= 0 && y >= 0 && y <= 1);
+    line.style.top = `${y * 100}%`;
   }
   map.addEventListener('wheel', event => {
     event.preventDefault();
@@ -1076,11 +1426,14 @@
   // A sketch has no list to mirror the choice: nothing is chosen on it.
   map.addEventListener('click', event => {
     if (carried || !world || world.sketch) return;
+    if (view === 'structures') { const near = structureNear(event); if (near) choose(world.structures.ids[near[0]]); return; }
     const list = listOf(view);
     choose(list.ids[list.at[pointUnder(event)[2]]]);
   });
   map.addEventListener('mousemove', event => {
     if (!world) return;
+    const near = view === 'structures' ? structureNear(event) : null;
+    if (near) { $('probe').textContent = text.structureProbe(num(near[1]), num(near[2]), pretty(world.structures.ids[near[0]])); return; }
     const [col, row, i] = pointUnder(event);
     $('probe').textContent = text.probe(num(world.originX + col * world.step), num(world.originZ + row * world.step),
       world.heights[i], pretty(world.biomes[world.biomeAt[i]].id));
@@ -1145,7 +1498,8 @@
       for (let row = 0; row < m; row++) for (let col = 0; col < m; col++) at.setY(row * m + col, world.heights[row * skip * n + col * skip]);
       const texture = new THREE.CanvasTexture(map);
       texture.colorSpace = THREE.SRGBColorSpace;
-      texture.magFilter = THREE.NearestFilter;
+      // The map's points stay square; the round marks of the structures are smoothed.
+      texture.magFilter = map.width === marksSide && view === 'structures' ? THREE.LinearFilter : THREE.NearestFilter;
       scene3d.land = new THREE.Mesh(ground, new THREE.MeshBasicMaterial({ map: texture }));
       // Half a block under the sea level: ground at that level is land, and must not lie in the sheet of water.
       scene3d.water = new THREE.Mesh(
@@ -1170,7 +1524,11 @@
   // The top layers of the ground are earth, sand or gravel, which no ore replaces: about this many blocks.
   const earthDepth = 3;
   // Ore near the ground is counted down to this depth, apart under low and under high ground.
-  const nearDepth = 64, highGround = 80, replays = 4;
+  const nearDepth = 64, highGround = 80;
+  // Chunk plays counted for the figures, whatever the length of the cut: 512, as a cut of 2048 blocks played
+  // four times. A short cut is played several times over, a long one one chunk in so many: the figures keep
+  // about the same steadiness, and a row typed in costs the same time.
+  const countedChunks = 512;
   // The ores drawn are those of a slice this thick, in blocks across the cut.
   const drawnSlice = [6, 10];
   const caveColour = [46, 42, 40];
@@ -1249,26 +1607,43 @@
     };
   }
 
-  // Plays every ore rule on a cut. Gives the ores to draw (one cell each, an index into oreKinds plus
-  // one) and, per ore, the blocks per chunk near the ground, under low and under high ground.
-  function playOres(section, cells, cut, rows) {
+  // The ground of a cut, once per cut: two heights per column, as the game keeps them (the first block that is
+  // not air, and the first that is neither air nor water, the sea floor under a sea), whether each chunk is
+  // under low or high ground, and the surface biome that says which rules a chunk plays.
+  function groundOf(section, cells, cut) {
     const L = section.length, H = section.height, minY = section.minY, topY = minY + H - 1;
-    const cellAt = (x, y) => x < 0 || x >= L || y < minY || y > topY ? 0 : cells[(topY - y) * L + x];
-    // Two heights of the ground per column, as the game keeps them: the first block that is not air,
-    // and the first that is neither air nor water (the sea floor under a sea).
     const surface = new Int16Array(L).fill(minY), floor = new Int16Array(L).fill(minY);
     for (let x = 0; x < L; x++) {
       let seen = false;
       for (let y = topY; y >= minY; y--) {
-        const cell = cellAt(x, y);
+        const cell = cells[(topY - y) * L + x];
         if (cell && !seen) { surface[x] = y + 1; seen = true; }
         if (cell === 1 || cell === 3) { floor[x] = y + 1; break; }
       }
     }
-    const chunks = L >> 4, high = new Uint8Array(chunks);
-    for (let c = 0; c < chunks; c++) high[c] = Array.from(floor.subarray(c * 16, c * 16 + 16)).sort((a, b) => a - b)[8] >= highGround;
-    const chunkCount = [high.filter(h => !h).length, high.filter(h => h).length];
+    const chunks = L >> 4, high = new Uint8Array(chunks), biomes = [];
+    const row = clamp(Math.round((cut.z - world.originZ) / world.step), 0, world.samples - 1);
+    for (let c = 0; c < chunks; c++) {
+      high[c] = Array.from(floor.subarray(c * 16, c * 16 + 16)).sort((a, b) => a - b)[8] >= highGround;
+      const col = clamp(Math.floor((cut.x + c * 16 - world.originX) / world.step), 0, world.samples - 1);
+      biomes.push(world.biomes[world.biomeAt[row * world.samples + col]]?.id);
+    }
+    let top = minY, bottom = topY, peak = 0;
+    for (let x = 0; x < L; x++) { if (surface[x] > top) { top = surface[x]; peak = x; } bottom = Math.min(bottom, floor[x]); }
+    // The empty sky above the highest ground is left out of the drawing.
+    const crop = Math.max(0, topY - top - 24);
+    return { surface, floor, chunks, high, biomes, top, bottom, peak, crop, rows: H - crop };
+  }
 
+  // Plays every ore rule on a cut, chunk by chunk: each chunk takes the rules its surface biome lists. A row
+  // takes the place of the anchored rule it came from; a row added here goes to every chunk, with the vein of
+  // the most tried rule of its ore. Each chunk draws its own numbers, from its name alone, so a chunk gives
+  // the same veins whatever was played before it: the figures can be counted on some chunks and the ores
+  // drawn on others, the ones on screen, each only once.
+  function orePlay(section, cells, cut, ground, rows) {
+    const L = section.length, H = section.height, minY = section.minY, topY = minY + H - 1;
+    const { surface, floor, chunks, high, biomes } = ground;
+    const cellAt = (x, y) => x < 0 || x >= L || y < minY || y > topY ? 0 : cells[(topY - y) * L + x];
     const int = (v, draw) => { const [low, top] = bounds(v); return low + Math.floor(draw() * (top - low + 1)); };
     const anchor = v => 'absolute' in v ? v.absolute : 'above_bottom' in v ? minY + v.above_bottom : topY - v.below_top;
     const between = (low, top, draw) => top < low ? low : low + Math.floor(draw() * (top - low + 1));
@@ -1319,33 +1694,49 @@
       const x0 = ox + Math.sin(angle) * reach, x1 = ox - Math.sin(angle) * reach;
       const z0 = oz + Math.cos(angle) * reach, z1 = oz - Math.cos(angle) * reach;
       const y0 = oy + Math.floor(draw() * 3) - 2, y1 = oy + Math.floor(draw() * 3) - 2;
-      const balls = [];
+      // Each ball is four numbers in a row: its centre, then its radius.
+      if (balls.length < size * 4) balls = new Float64Array(size * 4);
       for (let i = 0; i < size; i++) {
         const t = i / size, r = draw() * size / 16;
-        balls.push([x0 + (x1 - x0) * t, y0 + (y1 - y0) * t, z0 + (z1 - z0) * t, ((Math.sin(Math.PI * t) + 1) * r + 1) / 2]);
+        balls[i * 4] = x0 + (x1 - x0) * t; balls[i * 4 + 1] = y0 + (y1 - y0) * t; balls[i * 4 + 2] = z0 + (z1 - z0) * t;
+        balls[i * 4 + 3] = ((Math.sin(Math.PI * t) + 1) * r + 1) / 2;
       }
       // A ball inside another one adds nothing.
       for (let i = 0; i < size - 1; i++) for (let j = i + 1; j < size; j++) {
-        const a = balls[i], b = balls[j];
-        if (a[3] <= 0 || b[3] <= 0) continue;
-        const gap = a[3] - b[3];
-        if (gap * gap > (a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2) { if (gap > 0) b[3] = -1; else a[3] = -1; }
+        const a = i * 4, b = j * 4;
+        if (balls[a + 3] <= 0 || balls[b + 3] <= 0) continue;
+        const gap = balls[a + 3] - balls[b + 3], dx = balls[a] - balls[b], dy = balls[a + 1] - balls[b + 1], dz = balls[a + 2] - balls[b + 2];
+        if (gap * gap > dx * dx + dy * dy + dz * dz) { if (gap > 0) balls[b + 3] = -1; else balls[a + 3] = -1; }
       }
-      const done = new Set();
-      for (const [cx, cy, cz, r] of balls) {
+      // A block two balls share is placed once. The blocks met are marked in a box around the try, as the game
+      // does with its own bit set: far cheaper than a set of keys, and the veins are where a play spends its time.
+      stamp++;
+      const bx = Math.floor(ox) - 16, by = oy - 16, bz = Math.floor(oz) - 16;
+      for (let b = 0; b < size * 4; b += 4) {
+        const cx = balls[b], cy = balls[b + 1], cz = balls[b + 2], r = balls[b + 3];
         if (r < 0) continue;
-        for (let x = Math.floor(cx - r); x <= Math.floor(cx + r); x++) for (let y = Math.floor(cy - r); y <= Math.floor(cy + r); y++)
-          for (let z = Math.floor(cz - r); z <= Math.floor(cz + r); z++) {
-            if (((x + 0.5 - cx) / r) ** 2 + ((y + 0.5 - cy) / r) ** 2 + ((z + 0.5 - cz) / r) ** 2 >= 1) continue;
-            const key = (x + 64) * 1048576 + (y + 512) * 1024 + (z + 64);
-            if (!done.has(key)) { done.add(key); put(x, y, z); }
+        for (let x = Math.floor(cx - r); x <= Math.floor(cx + r); x++) {
+          const dx = (x + 0.5 - cx) / r;
+          for (let y = Math.floor(cy - r); y <= Math.floor(cy + r); y++) {
+            const dy = (y + 0.5 - cy) / r;
+            for (let z = Math.floor(cz - r); z <= Math.floor(cz + r); z++) {
+              const dz = (z + 0.5 - cz) / r;
+              if (dx * dx + dy * dy + dz * dz >= 1) continue;
+              const i = x - bx, j = y - by, l = z - bz;
+              if (i >= 0 && i < 32 && j >= 0 && j < 32 && l >= 0 && l < 32) {
+                const at = (i << 10) | (j << 5) | l;
+                if (met[at] === stamp) continue;
+                met[at] = stamp;
+              }
+              put(x, y, z);
+            }
           }
+        }
       }
     };
+    const met = new Int32Array(32768);
+    let stamp = 0, balls = new Float64Array(128);
 
-    // The rules of each chunk are those its surface biome lists. A row takes the place of the anchored
-    // rule it came from; a row added here goes to every chunk, with the vein of the most tried rule of its ore.
-    const row = z => Math.round((cut.z - world.originZ) / world.step);
     const veinOf = kind => section.rules.filter(rule => rule.kind === kind && rule.playable && !rule.anchored)
       .sort((a, b) => (bounds(b.placement[0].count)?.[1] ?? 0) - (bounds(a.placement[0].count)?.[1] ?? 0))[0];
     const plays = [];
@@ -1356,114 +1747,222 @@
       plays.push({ rule, name: added.id, kind: added.kind, config, everywhere: !rule, placement: [
         { type: 'count', count: added.count }, { type: 'in_square' }, { type: 'heightmap', heightmap: 'OCEAN_FLOOR_WG' }, ...stepsDown(added.from, added.to)] });
     }
-    const layer = new Uint8Array(L * H), near = plays.map(() => [0, 0]), whole = plays.map(() => 0);
-    plays.forEach((play, at) => {
-      const kind = oreKinds.indexOf(play.kind) + 1, skipAir = play.config.discard_chance_on_air_exposure ?? 0;
-      for (let replay = 0; replay < replays; replay++) {
-        const draw = drawOf(`${world.seed}/${section.at}/${play.name}/${replay}`);
-        const put = (x, y, z) => {
-          if (cellAt(x, y) !== 1 || (y < floor[x] && y >= floor[x] - earthDepth)) return;
-          // A vein in the open is often thrown away, block by block: the game looks at the six neighbours, the cut has four.
-          if (skipAir > 0 && (skipAir >= 1 || draw() < skipAir) && !(cellAt(x - 1, y) && cellAt(x + 1, y) && cellAt(x, y - 1) && cellAt(x, y + 1))) return;
-          // Counted over the whole chunk, 16 blocks thick; drawn from a thinner slice, or the cut would be covered with ore.
-          if (!replay && z >= drawnSlice[0] && z < drawnSlice[1]) layer[(topY - y) * L + x] = kind;
-          const depth = floor[x] - y;
-          whole[at]++;
-          if (depth >= 1 && depth <= nearDepth) near[at][high[x >> 4]]++;
-        };
-        for (let c = 0; c < chunks; c++) {
-          if (!play.everywhere) {
-            const biome = world.biomes[world.biomeAt[row() * world.samples + Math.floor((cut.x + c * 16 - world.originX) / world.step)]]?.id;
-            if (!section.biomes[biome]?.includes(play.rule.index)) continue;
-          }
-          for (const [x, y, z] of tries(play.placement, c * 16, draw)) {
-            // A try far above the ground meets only air.
-            if (y > minY && y - 12 <= Math.max(floor[clamp(x - 8, 0, L - 1)], floor[clamp(x, 0, L - 1)], floor[clamp(x + 8, 0, L - 1)])) vein(x, y, z, play.config.size, draw, put);
-          }
+    // One rule played on one chunk, `put` called with every block of ore it places. `nearOnly` leaves out the
+    // tries too deep to reach the counted depth: most tries are deep, and the figures only count near the ground.
+    const playChunk = (play, c, replay, put, nearOnly) => {
+      if (!play.everywhere && !section.biomes[biomes[c]]?.includes(play.rule.index)) return;
+      const draw = drawOf(`${world.seed}/${section.at}/${play.name}/${c}/${replay}`);
+      const skipAir = play.config.discard_chance_on_air_exposure ?? 0;
+      const keep = (x, y, z) => {
+        if (cellAt(x, y) !== 1 || (y < floor[x] && y >= floor[x] - earthDepth)) return;
+        // A vein in the open is often thrown away, block by block: the game looks at the six neighbours, the cut has four.
+        if (skipAir > 0 && (skipAir >= 1 || draw() < skipAir) && !(cellAt(x - 1, y) && cellAt(x + 1, y) && cellAt(x, y - 1) && cellAt(x, y + 1))) return;
+        put(x, y, z);
+      };
+      for (const [x, y, z] of tries(play.placement, c * 16, draw)) {
+        // A try far above the ground meets only air; a vein reaches 12 blocks at most from its try.
+        const a = floor[clamp(x - 8, 0, L - 1)], b = floor[clamp(x, 0, L - 1)], d = floor[clamp(x + 8, 0, L - 1)];
+        if (y <= minY || y - 12 > Math.max(a, b, d)) continue;
+        if (nearOnly && y + 12 < Math.min(a, b, d) - nearDepth) continue;
+        vein(x, y, z, play.config.size, draw, keep);
+      }
+    };
+
+    // The figures: blocks per chunk near the ground, under low and under high ground, counted over a sample
+    // of the same size whatever the length of the cut (every chunk several times over, or one in so many).
+    const sample = [], replays = Math.max(1, Math.round(countedChunks / chunks));
+    if (chunks <= countedChunks) for (let c = 0; c < chunks; c++) sample.push(c);
+    else for (let i = 0; i < countedChunks; i++) sample.push(Math.floor((i + 0.5) * chunks / countedChunks));
+    const playedIn = [0, 0];
+    for (const c of sample) playedIn[high[c]] += replays;
+    const perChunk = {};
+    for (const play of plays) {
+      const near = [0, 0];
+      for (const c of sample) for (let replay = 0; replay < replays; replay++) playChunk(play, c, replay, (x, y) => {
+        const depth = floor[x] - y;
+        if (depth >= 1 && depth <= nearDepth) near[high[c]]++;
+      }, true);
+      const ore = perChunk[play.kind] ??= { low: 0, high: 0, from: [] };
+      ore.low += playedIn[0] ? near[0] / playedIn[0] : 0;
+      ore.high += playedIn[1] ? near[1] / playedIn[1] : 0;
+      ore.from.push(play.name);
+    }
+    for (const ore of Object.values(perChunk)) { if (!playedIn[0]) ore.low = null; if (!playedIn[1]) ore.high = null; }
+
+    // The ores drawn: those of a thin slice across the cut, or the cut would be covered with ore, played on
+    // the chunks looked at only, as they come into sight, once each.
+    const layer = new Uint8Array(L * H), drawn = new Uint8Array(chunks);
+    const drawChunks = (from, to) => {
+      for (let c = Math.max(0, from); c <= Math.min(chunks - 1, to); c++) {
+        if (drawn[c]) continue;
+        drawn[c] = 1;
+        for (const play of plays) {
+          const kind = oreKinds.indexOf(play.kind) + 1;
+          playChunk(play, c, 0, (x, y, z) => { if (z >= drawnSlice[0] && z < drawnSlice[1]) layer[(topY - y) * L + x] = kind; });
         }
       }
-    });
-    // Per ore: blocks per chunk near the ground, under low and under high ground, and the rules it came from.
-    const perChunk = {};
-    plays.forEach((play, at) => {
-      const ore = perChunk[play.kind] ??= { low: 0, high: 0, column: 0, from: [] };
-      ore.column += whole[at] / replays / chunks;
-      ore.low += chunkCount[0] ? near[at][0] / replays / chunkCount[0] : 0;
-      ore.high += chunkCount[1] ? near[at][1] / replays / chunkCount[1] : 0;
-      ore.from.push(play.name);
-    });
-    for (const ore of Object.values(perChunk)) { if (!chunkCount[0]) ore.low = null; if (!chunkCount[1]) ore.high = null; }
-    return { layer, surface, floor, perChunk };
+    };
+    return { perChunk, layer, drawChunks, counted: sample.length * replays };
   }
 
-  // The cut may be looked at closer, like the map: k is screen pixels per block, x and y where its corner went.
+  // The cut is looked at through a window, at true scale: k screen pixels per block, x and y where the cut's
+  // corner went, in screen pixels. Only what the window shows is drawn, since a cut as long as the scanned
+  // area is far wider than a canvas may be. Above it, the whole cut drawn small says where the window is.
   const cutView = $('cutView'), cutCanvas = $('cutCanvas'), cutLook = { k: 0, x: 0, y: 0 };
+  let cutFrame = 0;
   function showCutLook() {
-    if (!cutShown) return;
-    const box = cutView.getBoundingClientRect(), fit = box.width / cutCanvas.width;
-    cutLook.k = clamp(cutLook.k || fit, fit, 12);
-    const wide = cutCanvas.width * cutLook.k, tall = cutCanvas.height * cutLook.k;
-    cutLook.x = clamp(cutLook.x, box.width - wide, 0);
+    if (!cutShown || view !== 'section') return;
+    const { section, ground } = cutShown, box = cutView.getBoundingClientRect();
+    if (!box.width || !box.height) return;
+    const [fit, least] = cutScales(box);
+    // A new cut is first looked at around its highest ground, which fills the window's height at true
+    // scale: elsewhere a low stretch would leave the window mostly sky.
+    if (!cutLook.k) cutLook.x = box.width / 2 - ground.peak * fit;
+    cutLook.k = clamp(cutLook.k || fit, least, 12);
+    const wide = section.length * cutLook.k, tall = ground.rows * cutLook.k;
+    cutLook.x = clamp(cutLook.x, Math.min(0, box.width - wide), 0);
     // A cut lower than its window sits on the window's bottom line, as on a ground.
     cutLook.y = tall <= box.height ? box.height - tall : clamp(cutLook.y, box.height - tall, 0);
-    Object.assign(cutCanvas.style, { width: `${wide}px`, height: `${tall}px`, transform: `translate(${cutLook.x}px, ${cutLook.y}px)` });
-    // Seen from afar an ore of one block is lost between two pixels: there it is drawn two blocks wide.
-    if ((cutLook.k < 0.75) !== cutShown.thick) drawCut();
+    showNavFrame(box);
+    if (!cutFrame) cutFrame = requestAnimationFrame(() => { cutFrame = 0; drawCut(); });
   }
+
+  // The scale that fills the window with the whole height of the cut, and the least one: half of that,
+  // never smaller than the whole length in the window. The strip above is there for the rest.
+  function cutScales(box) {
+    const fit = box.height / cutShown.ground.rows;
+    return [fit, Math.min(fit, Math.max(box.width / cutShown.section.length, fit / 2))];
+  }
+
   function drawCut() {
-    const { section, cells, played } = cutShown;
-    const L = section.length, H = section.height, minY = section.minY, topY = minY + H - 1;
-    // The empty sky above the highest ground is left out.
-    const crop = Math.max(0, topY - Math.max(...played.surface) - 24), rows = H - crop;
-    cutCanvas.width = L; cutCanvas.height = rows;
-    const brush = cutCanvas.getContext('2d'), image = brush.createImageData(L, rows), px = image.data;
-    const picked = chosen.section, thick = cutLook.k < 0.75;
-    for (let r = 0; r < rows; r++) for (let x = 0; x < L; x++) {
-      const y = topY - crop - r, cell = cells[(crop + r) * L + x];
+    if (!cutShown) return;
+    const { section, cells, ground, play } = cutShown, { crop, rows, floor, surface } = ground;
+    const L = section.length, topY = section.minY + section.height - 1;
+    const box = cutView.getBoundingClientRect(), ratio = devicePixelRatio, k = cutLook.k;
+    cutCanvas.width = Math.round(box.width * ratio); cutCanvas.height = Math.round(box.height * ratio);
+    // The blocks in sight, and the chunks they need played.
+    const x0 = Math.max(0, Math.floor(-cutLook.x / k)), x1 = Math.min(L, Math.ceil((box.width - cutLook.x) / k));
+    const r0 = Math.max(0, Math.floor(-cutLook.y / k)), r1 = Math.min(rows, Math.ceil((box.height - cutLook.y) / k));
+    const w = x1 - x0, h = r1 - r0;
+    if (w <= 0 || h <= 0) return;
+    play.drawChunks((x0 >> 4) - 1, (x1 >> 4) + 1);
+    const sheet = new OffscreenCanvas(w, h), brush = sheet.getContext('2d'), image = brush.createImageData(w, h), px = image.data;
+    const picked = chosen.section;
+    // Seen from afar an ore of one block is lost between two pixels: there it is drawn two blocks wide.
+    const reach = k < 0.75 ? 1 : 0;
+    for (let r = 0; r < h; r++) for (let x = 0; x < w; x++) {
+      const bx = x0 + x, row = crop + r0 + r, y = topY - row, cell = cells[row * L + bx];
       // The sky is the page's own ground; a cave is a hollow, darker than the rock around it.
-      if (!cell && y >= played.surface[x]) continue;
+      if (!cell && y >= surface[bx]) continue;
       const c = !cell ? caveColour : cell === 2 ? cutColours.water : cell === 3 ? cutColours.lava
-        : y < played.floor[x] && y >= played.floor[x] - earthDepth ? cutColours.earth : y < 4 ? cutColours.deep : cutColours.rock;
-      const i = (r * L + x) * 4;
+        : y < floor[bx] && y >= floor[bx] - earthDepth ? cutColours.earth : y < 4 ? cutColours.deep : cutColours.rock;
+      const i = (r * w + x) * 4;
       px[i] = c[0]; px[i + 1] = c[1]; px[i + 2] = c[2]; px[i + 3] = 255;
     }
-    for (let r = 0; r < rows; r++) for (let x = 0; x < L; x++) {
-      const ore = played.layer[(crop + r) * L + x];
+    for (let r = 0; r < h; r++) for (let x = 0; x < w; x++) {
+      const ore = play.layer[(crop + r0 + r) * L + x0 + x];
       if (!ore || (picked.size && !picked.has(oreKinds[ore - 1]))) continue;
-      const c = oreColours[oreKinds[ore - 1]], reach = thick ? 1 : 0;
-      for (let dr = 0; dr <= reach; dr++) for (let dx = 0; dx <= reach; dx++) {
-        if (r + dr < 0 || r + dr >= rows || x + dx < 0 || x + dx >= L) continue;
-        const i = ((r + dr) * L + x + dx) * 4;
+      const c = oreColours[oreKinds[ore - 1]];
+      for (let dr = 0; dr <= reach && r + dr < h; dr++) for (let dx = 0; dx <= reach && x + dx < w; dx++) {
+        const i = ((r + dr) * w + x + dx) * 4;
         px[i] = c[0]; px[i + 1] = c[1]; px[i + 2] = c[2]; px[i + 3] = 255;
       }
     }
     brush.putImageData(image, 0, 0);
-    Object.assign(cutShown, { crop, thick });
+    const pen = cutCanvas.getContext('2d');
+    pen.imageSmoothingEnabled = false;
+    pen.drawImage(sheet, (cutLook.x + x0 * k) * ratio, (cutLook.y + r0 * k) * ratio, w * k * ratio, h * k * ratio);
   }
 
-  // Draws the cut of the section, plays the ores on it, and fills the list of ores and the rows.
-  async function showCut(rebuildRows = true) {
+  // The whole cut drawn small: its rock and its water, from a little under the deepest floor to a little
+  // over the highest ground, so the heights are stretched to read. How much is said under it.
+  const nav = $('nav'), navCanvas = $('navCanvas'), navFrame = $('navFrame');
+  let navRange = null;
+  function drawNav() {
+    if (!cutShown) return;
+    const { section, ground } = cutShown, { surface, floor } = ground, L = section.length;
+    const box = nav.getBoundingClientRect(), ratio = devicePixelRatio;
+    const width = Math.round(box.width * ratio), height = Math.round(box.height * ratio);
+    if (!width || !height) return;
+    navCanvas.width = width; navCanvas.height = height;
+    const top = ground.top + 6, bottom = Math.max(section.minY, ground.bottom - 20);
+    navRange = { top, bottom };
+    const brush = navCanvas.getContext('2d'), image = brush.createImageData(width, height), px = image.data;
+    const rowOf = y => Math.round((top - y) / (top - bottom) * height);
+    for (let col = 0; col < width; col++) {
+      const from = Math.floor(col * L / width), to = Math.max(from + 1, Math.floor((col + 1) * L / width));
+      let ground = section.minY, water = section.minY;
+      for (let x = from; x < to; x++) { ground = Math.max(ground, floor[x]); water = Math.max(water, surface[x]); }
+      const rock = clamp(rowOf(ground), 0, height), sea = clamp(rowOf(water), 0, height);
+      for (let r = sea; r < height; r++) {
+        const c = r < rock ? cutColours.water : cutColours.rock, i = (r * width + col) * 4;
+        px[i] = c[0]; px[i + 1] = c[1]; px[i + 2] = c[2]; px[i + 3] = 255;
+      }
+    }
+    brush.putImageData(image, 0, 0);
+    // How many times the heights are stretched: blocks per pixel along the cut, against blocks per pixel up it.
+    const times = (L / box.width) / ((top - bottom) / box.height);
+    $('navNote').textContent = text.navNote(times < 1.95 ? num(times, 1) : num(Math.round(times)));
+  }
+  function showNavFrame(box) {
+    if (!navRange) return;
+    const { section, ground } = cutShown, k = cutLook.k, L = section.length, width = nav.clientWidth, height = nav.clientHeight;
+    const topY = section.minY + section.height - 1 - ground.crop;
+    const x0 = clamp(-cutLook.x / k, 0, L), x1 = clamp((box.width - cutLook.x) / k, 0, L);
+    // The heights in sight, placed on the strip's own range of heights.
+    const yOf = row => topY - row, rowOf = y => (navRange.top - y) / (navRange.top - navRange.bottom) * height;
+    const high = cutLook.y >= 0 ? 0 : clamp(rowOf(yOf(-cutLook.y / k)), 0, height);
+    const low = clamp(rowOf(yOf((box.height - cutLook.y) / k)), 0, height);
+    Object.assign(navFrame.style, { left: `${x0 / L * width}px`, width: `${(x1 - x0) / L * width}px`,
+      top: `${high}px`, bottom: `${low >= height - 0.5 ? 0 : height - low}px` });
+  }
+  // A click on the strip brings the window there; a press that travels carries it along.
+  let navCarry = null;
+  nav.addEventListener('pointerdown', event => {
+    if (event.button !== 0 || !cutShown) return;
+    const box = nav.getBoundingClientRect(), frame = navFrame.getBoundingClientRect();
+    const inside = event.clientX >= frame.left - 3 && event.clientX <= frame.right + 3;
+    const per = cutShown.section.length / box.width;
+    navCarry = { per, grip: inside ? event.clientX - frame.left : frame.width / 2 };
+    const goTo = clientX => { cutLook.x = -((clientX - navCarry.grip - box.left) * per) * cutLook.k; showCutLook(); };
+    navCarry.goTo = goTo;
+    if (!inside) goTo(event.clientX);
+    nav.setPointerCapture(event.pointerId);
+    navFrame.style.cursor = nav.style.cursor = 'grabbing';
+  });
+  nav.addEventListener('pointermove', event => { if (navCarry) navCarry.goTo(event.clientX); });
+  for (const end of ['pointerup', 'pointercancel']) nav.addEventListener(end, () => { navCarry = null; navFrame.style.cursor = nav.style.cursor = ''; });
+
+  // Draws the cut of the section and plays the ores on it, then fills the list of ores.
+  async function showCut() {
     const section = world?.section;
     if (!section) { cutShown = null; return; }
     const cut = section.cuts[section.at];
     section.cells[section.at] ??= await fetch(`/preview/data/${cut.file}`).then(r => r.arrayBuffer()).then(b => new Uint8Array(b));
     const cells = section.cells[section.at];
     if (world?.section !== section || cells.length !== section.length * section.height) return;
-    const rows = oreRows ?? rowsOfMods(section);
-    const played = playOres(section, cells, cut, rows);
+    section.grounds ??= [];
+    const ground = section.grounds[section.at] ??= groundOf(section, cells, cut);
+    const play = orePlay(section, cells, cut, ground, oreRows ?? rowsOfMods(section));
     const fresh = cutShown?.section !== section || cutShown.cut !== cut;
-    cutShown = { section, cut, cells, played, perChunk: played.perChunk, thick: null };
-    if (fresh) cutLook.k = cutLook.x = cutLook.y = 0;
-    drawCut(); showCutLook(); showOres();
-    if (rebuildRows) showRows(rows);
+    cutShown = { section, cut, cells, ground, play, perChunk: play.perChunk };
+    if (fresh) { cutLook.k = cutLook.x = cutLook.y = 0; drawNav(); }
+    showCutLook(); showOres();
     restProbe();
+  }
+  // A row typed in plays the ores again, but not on every key: one play at a time, the last value wins.
+  let replaying = 0;
+  function replayOres() {
+    if (view !== 'section' || replaying) return;
+    replaying = setTimeout(() => { replaying = 0; drawingCut = showCut(); }, 0);
   }
 
   function showOres() {
-    const { perChunk, section } = cutShown, picked = chosen.section;
+    const { perChunk, section, play } = cutShown, picked = chosen.section;
     [$('listTitle').textContent, $('listColumn').textContent] = text.oreList;
-    text.oreColumns.forEach((name, i) => { const head = $('listHead').children[i + 2]; head.textContent = name; head.title = text.oreColumnsHint; });
+    text.oreColumns.forEach((name, i) => { const head = $('listHead').children[i + 2]; head.textContent = name; head.title = text.oreColumnsHint(num(play.counted)); });
     $('filter').hidden = true;
+    $('listHead').hidden = false;
     const figure = v => v == null ? '–' : num(v, 1);
     $('biomes').replaceChildren(...oreKinds.filter(kind => perChunk[kind]).map(kind => {
       const row = document.createElement('button');
@@ -1483,10 +1982,14 @@
     $('pick').replaceChildren(unplayed ? text.oreUnplayed(unplayed) : text.orePickHint);
   }
 
-  // The rows of what is added: an ore, how many tries a chunk gets, and between which depths.
-  function showRows(rows) {
-    const section = world.section;
-    const change = next => { keepRows(next); drawingCut = showCut(); };
+  // The rows of what is added, in their group on the left: an ore, how many tries a chunk gets, and between
+  // which depths. They are built when the preview or their number changes, not while a value is typed.
+  function showRows() {
+    const section = world?.section;
+    groups.ores.box.hidden = !section;
+    if (!section) return;
+    const rows = oreRows ?? rowsOfMods(section);
+    const change = next => { keepRows(next); showRows(); if (view === 'section') drawingCut = showCut(); };
     const action = (label, act, pressed, hint) => {
       const b = document.createElement('button');
       b.textContent = label; b.title = hint || '';
@@ -1497,12 +2000,17 @@
     const free = oreKinds.filter(kind => !rows.some(row => row.kind === kind) && section.rules.some(rule => rule.kind === kind && rule.playable && !rule.anchored));
     $('addedActions').replaceChildren(
       ...free.map(kind => action(text.addedAdd(text.ores[kind].toLowerCase()), () => change([...rows, { id: `added/${kind}`, kind, count: 2, from: 8, to: 32 }]))),
-      ...(rows.length ? [action(text.addedWithout, () => { withoutAdded = !withoutAdded; drawingCut = showCut(); }, withoutAdded, text.addedWithoutHint)] : []),
+      ...(rows.length ? [action(text.addedWithout, () => { withoutAdded = !withoutAdded; showRows(); if (view === 'section') drawingCut = showCut(); }, withoutAdded, text.addedWithoutHint)] : []),
       ...(oreRows ? [action(text.addedReset, () => change(null))] : []));
     const head = document.createElement('div');
     head.className = 'ore-row head';
-    head.append(...text.addedHead.map(name => { const span = document.createElement('span'); span.textContent = name; if (name === 'from' || name === 'to') span.title = text.addedDepthHint; return span; }));
-    $('oreRows').replaceChildren(...(rows.length ? [head] : []), ...rows.map((row, at) => {
+    head.append(...text.addedHead.map((name, i) => {
+      const span = document.createElement('span');
+      span.textContent = name;
+      span.title = i === 2 ? text.addedCountHint : i > 2 && name ? text.addedDepthHint : '';
+      return span;
+    }));
+    $('oreRows').replaceChildren(...(rows.length ? [head] : [text.addedNone]), ...rows.map((row, at) => {
       const line = document.createElement('div');
       line.className = 'ore-row';
       line.innerHTML = '<i></i><span></span><input type="number" min="0" max="64"><input type="number" min="0" max="160"><input type="number" min="0" max="160"><button>×</button>';
@@ -1512,17 +2020,28 @@
       ['count', 'from', 'to'].forEach((key, i) => {
         const input = line.children[i + 2];
         input.value = row[key];
+        input.title = i ? text.addedDepthHint : text.addedCountHint;
         // The rows are not rebuilt while a value is typed, so the field keeps the cursor.
         input.addEventListener('input', () => {
           if (input.value === '' || !(+input.value >= 0)) return;
           keepRows(rows.map((r, j) => j === at ? Object.assign(r, { [key]: Math.round(+input.value) }) : r));
-          drawingCut = showCut(false);
+          showRowsNote();
+          replayOres();
         });
       });
       line.children[5].title = text.addedRemove;
       line.children[5].addEventListener('click', () => change(rows.filter((_, j) => j !== at)));
       return line;
     }));
+    showRowsNote();
+  }
+  // How many rows differ from the mods' own: changed, added or taken out.
+  function showRowsNote() {
+    const section = world?.section;
+    if (!section) return;
+    const mods = rowsOfMods(section), rows = oreRows ?? mods;
+    const same = (a, b) => a.id === b.id && a.count === b.count && a.from === b.from && a.to === b.to;
+    showNote('ores', rows.filter(row => !mods.some(mod => same(mod, row))).length + mods.filter(mod => !rows.some(row => row.id === mod.id)).length);
   }
 
   function restCut() {
@@ -1541,7 +2060,7 @@
     event.preventDefault();
     if (!cutShown) return;
     const box = cutView.getBoundingClientRect(), px = event.clientX - box.left, py = event.clientY - box.top;
-    const k = clamp(cutLook.k * (event.deltaY < 0 ? 1.25 : 0.8), box.width / cutCanvas.width, 12);
+    const k = clamp(cutLook.k * (event.deltaY < 0 ? 1.25 : 0.8), cutScales(box)[1], 12);
     cutLook.x = px - (px - cutLook.x) * k / cutLook.k; cutLook.y = py - (py - cutLook.y) * k / cutLook.k; cutLook.k = k;
     showCutLook();
   }, { passive: false });
@@ -1558,18 +2077,18 @@
       return;
     }
     if (!cutShown) return;
-    const { section, cut, cells, played, crop } = cutShown, box = cutCanvas.getBoundingClientRect();
-    const x = Math.floor((event.clientX - box.left) / cutLook.k), r = Math.floor((event.clientY - box.top) / cutLook.k);
-    if (x < 0 || x >= section.length || r < 0 || r >= cutCanvas.height) { restCut(); return; }
-    const y = section.minY + section.height - 1 - crop - r, cell = cells[(crop + r) * section.length + x];
-    const ore = played.layer[(crop + r) * section.length + x];
-    const what = ore ? text.ores[oreKinds[ore - 1]] : cell === 1 && y >= played.floor[x] - earthDepth ? text.cutEarth : text.cutCells[cell];
-    const biome = world.biomes[world.biomeAt[Math.round((cut.z - world.originZ) / world.step) * world.samples + Math.floor((cut.x + x - world.originX) / world.step)]];
-    $('probe').textContent = text.cutProbe(num(cut.x + x), y, text.cutDepth(played.floor[x] - y), what, biome ? pretty(biome.id) : '');
+    const { section, cut, cells, play, ground } = cutShown, box = cutView.getBoundingClientRect();
+    const x = Math.floor((event.clientX - box.left - cutLook.x) / cutLook.k), r = Math.floor((event.clientY - box.top - cutLook.y) / cutLook.k);
+    if (x < 0 || x >= section.length || r < 0 || r >= ground.rows) { restCut(); return; }
+    const row = ground.crop + r, y = section.minY + section.height - 1 - row, cell = cells[row * section.length + x];
+    const ore = play.layer[row * section.length + x];
+    const what = ore ? text.ores[oreKinds[ore - 1]] : cell === 1 && y >= ground.floor[x] - earthDepth ? text.cutEarth : text.cutCells[cell];
+    const biome = ground.biomes[x >> 4];
+    $('probe').textContent = text.cutProbe(num(cut.x + x), y, text.cutDepth(ground.floor[x] - y), what, biome ? pretty(biome) : '');
   });
   for (const end of ['pointerup', 'pointercancel']) cutView.addEventListener(end, () => { cutCarry = null; });
   cutView.addEventListener('mouseleave', restCut);
-  addEventListener('resize', showCutLook);
+  addEventListener('resize', () => { if (view === 'section' && cutShown) { drawNav(); showCutLook(); } });
 
   // ---------- tabs: what the map shows on the left, and its shape on the right, flat or draped over the relief.
   // Two choices of the same kind, each with one answer always lit: nothing here is a switch to turn off.
@@ -1582,14 +2101,25 @@
       if (key in text.shapes) tab.hidden = view === 'section';
     }
     const cut = view === 'section';
+    // A preview made before the structures were sampled has none: the view says so instead of a bare map.
+    const unmarked = view === 'structures' && !!world && !world.sketch && !world.structures;
     $('frame').classList.toggle('cut', cut);
-    $('relief').hidden = !in3d || cut;
-    $('flat').hidden = cut;
+    $('relief').hidden = !in3d || cut || unmarked;
+    $('flat').hidden = cut || unmarked;
     $('cut').hidden = !cut || !world?.section;
     $('nextCut').hidden = !cut || !world?.section;
     map.style.visibility = in3d ? 'hidden' : 'visible';
-    $('grid').hidden = in3d || !world;
-    $('note').textContent = !world ? text.noPreview : cut && !world.section ? text.noSection : '';
+    $('grid').hidden = in3d || !world || unmarked;
+    $('note').textContent = !world ? text.noPreview : cut && !world.section && !world.sketch ? text.noSection : unmarked ? text.noStructures : '';
+    // The section's column on the right holds its own figures only: the map's would describe something else.
+    $('numbers').classList.toggle('cut', cut);
+    $('figuresBlock').hidden = cut;
+    if (cut && !world?.section) {
+      $('listTitle').textContent = text.oreList[0];
+      $('listHead').hidden = $('filter').hidden = true;
+      $('biomes').replaceChildren(); $('pick').replaceChildren();
+    }
+    showCutLine();
     paint();
     restProbe();
   }
@@ -1599,34 +2129,32 @@
     tab.dataset.view = key;
     if (key === 'flat2d') tab.className = 'apart';
     tab.addEventListener('click', () => {
-      if (key in text.shapes) in3d = key === 'relief3d'; else view = key;
+      if (key in text.shapes) in3d = key === 'relief3d';
+      else if (key !== view) { view = key; openGroupsFor(view); }
       showTabs();
       if (world && !world.sketch && !(key in text.shapes)) showList();
     });
     $('tabs').append(tab);
   }
+  openGroupsFor(view, false);
 
   // ---------- generating ----------
 
-  // The steps of a run, where the button is: those done with the second each ended at, the one under
-  // way with the clock, a hairline that fills with the share of the wait gone by, and a word if any.
-  function showSteps(done, current, clock, share, word) {
-    const row = (mark, label, seconds, now) => {
-      const line = document.createElement('div');
-      line.className = now ? 'step now' : 'step';
-      line.innerHTML = '<span></span><span></span><span class="num"></span>';
-      line.children[0].textContent = mark;
-      line.children[1].textContent = label;
-      line.children[2].textContent = text.duration(seconds);
-      return line;
+  // The steps of a run, under the map: a hairline that fills with the share of the wait gone by, then those
+  // done with the second each ended at, and the one under way. The clock itself is beside the button.
+  function showSteps(done, current, share) {
+    const step = (mark, label, seconds) => {
+      const span = document.createElement('span');
+      span.className = seconds == null ? 'step now' : 'step';
+      span.innerHTML = '<b></b>';
+      span.firstChild.textContent = mark;
+      span.append(seconds == null ? label : `${label}  ${text.duration(seconds)}`);
+      return span;
     };
     const bar = document.createElement('div');
     bar.className = 'bar';
     bar.style.setProperty('--share', share);
-    const rows = [...done.map(([label, seconds]) => row('✓', label, seconds)), ...(current ? [row('›', current, clock, true)] : []), bar];
-    if (word) { const line = document.createElement('small'); line.textContent = word; rows.push(line); }
-    $('steps').replaceChildren(...rows);
-    $('steps').hidden = false;
+    $('steps').replaceChildren(bar, ...done.map(([label, seconds]) => step('✓', label, seconds)), ...(current ? [step('›', current)] : []));
   }
 
   // Waits for a run with the page: the steps, the sketches, then the map or the trouble. `ended` resolves
@@ -1652,8 +2180,8 @@
     let stage = text.steps.start;
     const share = () => Math.min(0.97, seconds() / expected);
     const tick = () => {
-      showSteps(done, stage, seconds(), share(), world?.sketch ? text.steps.readable : '');
-      $('status').textContent = text.running(text.duration(seconds()), wait);
+      showSteps(done, stage, share());
+      $('status').textContent = `${text.running(text.duration(seconds()), wait)}${world?.sketch ? ` ${text.steps.readable}` : ''}`;
     };
     const clock = setInterval(tick, 1000);
     tick();
@@ -1711,7 +2239,7 @@
       if (sketched) { if (!world) map.width = map.height = 0; showTabs(); restProbe(); }
     }
     // The steps stay, to see where the time went; the one that did not end is left out.
-    showSteps(done, '', 0, finished ? 1 : share(), '');
+    showSteps(done, '', finished ? 1 : share());
     showButton();
   }
 
@@ -1755,9 +2283,10 @@
     $('status').textContent = text.exporting;
     // The export says where it is in the same place as a run does, and takes the place of its steps.
     const started = Date.now(), seconds = () => Math.round((Date.now() - started) / 1000);
-    const done = [], kinds = Object.keys(text.views);
+    // A preview without structures has no picture of them to give.
+    const done = [], kinds = Object.keys(text.views).filter(kind => kind !== 'structures' || world.structures);
     const step = async label => {
-      showSteps(done, label, seconds(), done.length / (kinds.length + 1), '');
+      showSteps(done, label, done.length / (kinds.length + 1));
       // Drawing a wide map holds the page: let it show the step first.
       await new Promise(resolve => setTimeout(resolve, 30));
     };
@@ -1771,12 +2300,14 @@
         await refresh3d();
         if (scene3d) await send(`${kind}-3d.png`, await scene3d.shot(1600));
         const list = listOf(kind);
-        lists[kind] = list.ids.map((id, i) => ({ id, name: list.names[i], share: 100 * list.cells[i] / total, width: Math.round(list.widths[i]) }))
-          .filter(row => row.share).sort((a, b) => kind === 'biomes' ? b.share - a.share : 0);
+        lists[kind] = list.counted
+          ? list.ids.map((id, i) => ({ id, name: list.names[i], count: list.cells[i], spacing: Math.round(list.widths[i]) })).filter(row => row.count).sort((a, b) => b.count - a.count)
+          : list.ids.map((id, i) => ({ id, name: list.names[i], share: 100 * list.cells[i] / total, width: Math.round(list.widths[i]) }))
+            .filter(row => row.share).sort((a, b) => kind === 'biomes' ? b.share - a.share : 0);
         done.push([text.exportStep(text.views[kind]), seconds()]);
       }
-      // The cut as it was last drawn, and what is added to it.
-      if (cutShown) await send('section.png', await new Promise(resolve => $('cutCanvas').toBlob(resolve)));
+      // The cut as it was last looked at: a whole cut as long as the area would be a thread, or wider than a picture may be.
+      if (cutShown && cutCanvas.width) await send('section.png', await new Promise(resolve => cutCanvas.toBlob(resolve)));
       await step(text.exportData);
       const sameSpan = before && before.span === world.figures.span;
       const { folder } = await send('export.json', JSON.stringify({
@@ -1791,7 +2322,7 @@
     view = was;
     exporting = false;
     paint();
-    showSteps(done, '', 0, done.length / (kinds.length + 1), '');
+    showSteps(done, '', done.length / (kinds.length + 1));
     showButton();
   });
   world = await loadWorld();
@@ -1820,9 +2351,10 @@
   scheme.addEventListener('change', paint);
 
   // The address can ask for a state, so a capture gets any view without a click:
-  // /?view=height,relief3d&biome=minecraft:desert,minecraft:badlands
+  // /?view=height,relief3d&biome=minecraft:desert,minecraft:badlands, or &structure=minecraft:village_plains
   const asked = new URLSearchParams(location.search);
   for (const id of (asked.get('biome') || '').split(',')) if (id) chosen.biomes.add(id);
+  for (const id of (asked.get('structure') || '').split(',')) if (id) chosen.structures.add(id);
   if (world && chosen.biomes.size) { showChoice(); paint(); }
   for (const key of (asked.get('view') || '').split(',')) $('tabs').querySelector(`[data-view="${key}"]`)?.click();
   // Tells a capture that everything asked for is drawn (see scripts/capture.ps1).
