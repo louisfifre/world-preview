@@ -321,7 +321,7 @@ try {
                 if ($Run) { $Run.Stopped = $true; Stop-RunJava }
                 Send-Reply $context 200
             }
-            elseif ($path -match '^/api/preview/export/([\w-]{1,90})/((biomes|flat|height|temperature)(-3d)?\.png|section\.png|export\.json)$') {
+            elseif ($path -match '^/api/preview/export/([\w-]{1,90})/((biomes|flat|height|temperature|structures)(-3d)?\.png|section\.png|export\.json)$') {
                 # One file of an export: the pictures of the map and what the page measured, kept in a
                 # folder of their own so a try can be looked at again, or shown to someone, later.
                 $folder = Join-Path (Join-Path $Dir 'exports') $Matches[1]
