@@ -276,7 +276,7 @@ try {
                 } else { @{ running = $false; error = $LastFailure; stopped = $LastStopped } }
                 Send-Reply $context 200 (ConvertTo-Json $state)
             }
-            elseif ($method -eq 'GET' -and $path -match '^/preview/data/((coarse-\d+-)?(heights|biomes)\.bin|preview\.json|coarse\.json|run\.json)$') {
+            elseif ($method -eq 'GET' -and $path -match '^/preview/data/((coarse-\d+-)?(heights|biomes)\.bin|preview\.json|coarse\.json|run\.json|section\.json|section-\d\.bin|ores\.json)$') {
                 $file = Join-Path $Out $Matches[1]
                 if (Test-Path $file) { Send-Bytes $context 200 ([IO.File]::ReadAllBytes($file)) 'application/octet-stream' }
                 else { Send-Reply $context 404 }
@@ -321,7 +321,7 @@ try {
                 if ($Run) { $Run.Stopped = $true; Stop-RunJava }
                 Send-Reply $context 200
             }
-            elseif ($path -match '^/api/preview/export/([\w-]{1,90})/((biomes|flat|height|temperature)(-3d)?\.png|export\.json)$') {
+            elseif ($path -match '^/api/preview/export/([\w-]{1,90})/((biomes|flat|height|temperature)(-3d)?\.png|section\.png|export\.json)$') {
                 # One file of an export: the pictures of the map and what the page measured, kept in a
                 # folder of their own so a try can be looked at again, or shown to someone, later.
                 $folder = Join-Path (Join-Path $Dir 'exports') $Matches[1]
