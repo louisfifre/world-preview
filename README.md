@@ -30,6 +30,7 @@ It was written while tuning a modpack's terrain, where every try used to mean st
 <img src="docs/media/board-relief.png" alt="The biome map draped over the real heights, seen from low above the sea." width="100%">
 
 - **Draped over the real heights.** Any view can be shown in 3D, at true scale: one unit is one block, heights included.
+- **A cut through the ground, with its ores.** The Section view shows a line of 2048 blocks from the bottom of the world to its top, at true scale: the generator's own rock, caves, water and lava. The ores are played on it from the rules the server loaded, those of the game and of every mod, and counted near the ground, under low and under high ground. Ores placed at a depth counted from the ground can be added or changed in rows, and the cut follows at once.
 - **A try can be kept.** Export writes a folder under `run\preview\exports`: the settings and the figures in one file, and a picture of each view, flat and in 3D.
 
 ## Requirements
@@ -102,6 +103,7 @@ Most of the first sketch's wait is the server start. A seed run for the first ti
 ## Limits
 
 - No trees, structures or caves: the map answers "how big, how high, how much", not "is this biome pleasant to walk in".
+- The ores of a cut are a play of the rules on the real ground, not the blocks a world would hold: compared once with real chunks, it gave a fifth to a half more ore. It compares one setting with another.
 - The sketches skip the aquifers (the game's underground water and lava) and read fewer points: close to the full map, not proven exact.
 - Windows only: the scripts lean on PowerShell, the Windows registry to find the browser, and Windows Forms for the tray icon.
 - One run at a time on a machine: a second one waits for the first.
