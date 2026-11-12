@@ -16,7 +16,15 @@ The server's output lands in `last-run.log` in the work folder, what Java wrote 
 
 The mod makes several passes, from coarse to full. The sketches first: one point in 16, then 4, then 2 of the full grid along each side, each kept when it leaves at least 128 points a side, without the aquifers, so close but not proven exact. Each replaces `coarse.json` and writes its points as `coarse-<step>-heights.bin` and `coarse-<step>-biomes.bin`; the page asks for `coarse.json` every second and draws a sketch when it is finer than the one on screen. Then the full grid (`preview.json`, `heights.bin`, `biomes.bin`): the ground height from `ChunkGenerator.getBaseHeight` (heightmap `OCEAN_FLOOR_WG`, so a sea bed shows its depth) and the surface biome from the biome source. No chunk is generated.
 
+Last come what the Section view shows. Up to four cuts through the ground (`section.json`, `section-<n>.bin`): lines of 2048 blocks running west to east, drawn at random from the seed among those of the map, the ones that cross the most different ground kept (a height, some sea, some level land). Each cell of a cut, one per block from the bottom of the world to its top, is what the generator's density and aquifers give: rock, air, water or lava. Then the ore rules the server ended up with (`ores.json`): every placement of an ore feature with its steps, as a data pack writes them, and for each biome the placements it lists once every mod has added its own. Trouble in this last part is logged and leaves the map as it is.
+
+The page plays those rules on the cut itself: for each chunk along it, each rule its surface biome lists draws its tries and its veins the way the game does. So the ground of a cut is the generator's, and its ores are a play of the rules, not the blocks a world of that seed would hold. The ores are counted over a slice 16 blocks thick, four times over, and drawn over 4 blocks. The top layers of the ground, where no ore goes, are taken as 3 blocks; carved ravines are not there. Rules that count a depth from the ground (a `heightmap` step, then `offset` steps down) are shown as rows the page can change, add to or remove; the rows live in the browser and are written nowhere else, except into an export.
+
+Compared once with real chunks (a census of another world of the same pack, low ground): the play gave about a fifth to a half more ore per chunk for the deep ores. Read its figures as one try against another, not as a count.
+
 The computation leaves room for the rest of the machine: the mod samples on half of the available processors (`-Dworldpreview.threads=<n>` on the server's command line says otherwise), and `preview.ps1` puts the server below the normal priority. With every thread at the normal priority, a full pass made the machine stall for seconds at a time.
+
+`-Mods` (or the environment variable `WORLD_PREVIEW_MODS`, paths separated by semicolons) adds jars to the server on top of the pack's, for a mod being worked on; those of the run before leave the folder first.
 
 A changed Tectonic value applies on the next start, on the same world folder. Two runs never go together on one machine: they would share a port and, often, a folder. The second waits on a named mutex.
 
@@ -31,8 +39,8 @@ A page cannot start a program or read a file, so `serve.ps1` is the small local 
 | `POST /api/preview` | Starts a run in the background and answers when it ends. Only from the page itself: the `Origin` header must be the server's own. |
 | `GET /api/preview/run` | The run under way, if any: its seed, area, values and age in seconds. A window opened during a run reads it to join that run; once the run is over, it says what went wrong, if anything, or that it was stopped. |
 | `POST /api/preview/stop` | Stops the run under way, its Java included. The request that started the run then answers `stopped`. |
-| `POST /api/preview/export/<name>/<file>` | Writes one file of an export into `<Dir>\exports\<name>`: a picture of a view (`biomes.png`, `height-3d.png`…) or `export.json`, the settings and what the page measured. |
-| `GET /preview/data/<file>` | The files of the last run, the sketch included. |
+| `POST /api/preview/export/<name>/<file>` | Writes one file of an export into `<Dir>\exports\<name>`: a picture of a view (`biomes.png`, `height-3d.png`…), of the cut last drawn (`section.png`), or `export.json`, the settings and what the page measured. |
+| `GET /preview/data/<file>` | The files of the last run, the sketch, the cuts and the ore rules included. |
 | `GET /api/ping` | The page pings every 10 seconds; the server stops about 90 seconds after the pings stop, never during a run. |
 
 The run goes on a background thread, so the server answers the page's other requests meanwhile, the sketch among them. Quitting from the icon stops a run under way, its Java included. If the port is already taken, the script only opens a window on the server that holds it.

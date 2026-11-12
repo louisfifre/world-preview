@@ -39,6 +39,11 @@ Blocks between two grid points.
 Where the result lands, <Dir>\out when omitted. A second caller (the capture script) passes its
 own folder, so it never replaces the preview someone is looking at. The server folder stays shared:
 one run at a time, the next one waits.
+
+.PARAMETER Mods
+Jars added to the server for this run, on top of the pack's mods: a mod being worked on, which the
+pack does not hold yet. Read from the environment variable WORLD_PREVIEW_MODS when omitted, its
+paths separated by semicolons.
 #>
 param(
     [string]$Pack,
@@ -47,7 +52,8 @@ param(
     [hashtable]$Tectonic = @{},
     [int]$Samples = 512,
     [int]$Step = 16,
-    [string]$Out
+    [string]$Out,
+    [string[]]$Mods
 )
 
 . "$PSScriptRoot\common.ps1"
@@ -107,6 +113,20 @@ Copy-Item $jar.FullName (Join-Path $Dir 'mods')
 # same without it), but it costs seconds at every start. It leaves this folder only: the pack keeps it,
 # and the next sync brings it back before this line takes it out again.
 Get-ChildItem (Join-Path $Dir 'mods') -Filter 'DistantHorizons-*.jar' | Remove-Item
+# The jars asked on top of the pack. Those of the run before leave first, by the names kept from it:
+# a mod that is no longer asked for must not stay in the server.
+if (-not $Mods -and $env:WORLD_PREVIEW_MODS) { $Mods = $env:WORLD_PREVIEW_MODS -split ';' | Where-Object { $_ } }
+$addedFile = Join-Path $Dir '.added-mods'
+if (Test-Path $addedFile) {
+    foreach ($name in [IO.File]::ReadAllLines($addedFile)) {
+        if ($name) { Remove-Item (Join-Path (Join-Path $Dir 'mods') $name) -ErrorAction SilentlyContinue }
+    }
+}
+foreach ($mod in $Mods) {
+    if (-not (Test-Path $mod)) { throw "The mod to add was not found: $mod" }
+    Copy-Item $mod (Join-Path $Dir 'mods')
+}
+[IO.File]::WriteAllLines($addedFile, [string[]]@($Mods | ForEach-Object { Split-Path $_ -Leaf }))
 
 # 3. The Tectonic config for this run: the pack's file, with the asked values replaced.
 $config = [IO.File]::ReadAllText((Join-Path $Pack 'config\tectonic.json'))
@@ -138,7 +158,8 @@ $world = 'seed-' + ($Seed -replace '[^A-Za-z0-9_-]', '_')
 ))
 
 # 5. Run. The mod stops the server itself once the files are written.
-Remove-Item (Join-Path $Out 'preview.json'), (Join-Path $Out 'coarse.json'), (Join-Path $Out 'coarse-*.bin') -ErrorAction SilentlyContinue
+Remove-Item (Join-Path $Out 'preview.json'), (Join-Path $Out 'coarse.json'), (Join-Path $Out 'coarse-*.bin'),
+    (Join-Path $Out 'section.json'), (Join-Path $Out 'section-*.bin'), (Join-Path $Out 'ores.json') -ErrorAction SilentlyContinue
 $watch = [Diagnostics.Stopwatch]::StartNew()
 $null = Invoke-Java $Dir (Join-Path $Dir 'last-run.log') @('-Xmx4G', '-XX:+UseZGC', "-Dworldpreview.out=$Out",
     "-Dworldpreview.samples=$Samples", "-Dworldpreview.step=$Step", '-jar', $launcher, 'nogui') -Background
