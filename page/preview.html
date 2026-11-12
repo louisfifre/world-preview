@@ -170,6 +170,26 @@
   #tabs .apart { margin-left: auto; }
   #under { position: absolute; left: 0; right: 0; top: calc(100% + 12px); font-size: 13px; }
   #probe { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* The section takes the square's place: the cut on top, what is added to it underneath. */
+  #cut { position: absolute; inset: 0; display: flex; flex-direction: column; gap: 18px; }
+  #frame.busy #cut { opacity: 0.3; }
+  /* A cut is long and low: it takes the whole width the window gives, where the map keeps to a square. */
+  #frame.cut { width: 100cqw; height: calc(100cqh - 80px); aspect-ratio: auto; }
+  #cutView { flex: none; height: 46%; position: relative; overflow: hidden; cursor: crosshair; touch-action: none; border-bottom: 1px solid var(--line); }
+  #cutCanvas { position: absolute; left: 0; top: 0; image-rendering: pixelated; }
+  #added { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+  #added .choice { flex-wrap: wrap; gap: 0 18px; }
+  .ore-row { display: grid; grid-template-columns: 12px minmax(0, 1fr) 9ch 7ch 7ch 16px; gap: 12px; align-items: baseline; padding: 3px 0; }
+  .ore-row i { width: 12px; height: 12px; border-radius: 2px; align-self: center; box-shadow: inset 0 0 0 1px rgb(128 128 128 / 0.35); }
+  .ore-row.head { font-size: 12px; color: var(--muted); }
+  .ore-row.head span { text-align: right; }
+  .ore-row input {
+    width: 100%; padding: 2px 0; font: inherit; color: inherit; text-align: right; background: none;
+    border: 0; border-bottom: 1px solid var(--line); border-radius: 0; user-select: text;
+  }
+  .ore-row input:focus { outline: none; border-color: var(--text); }
+  .ore-row button { padding: 0; color: var(--muted); }
+  .ore-row button:hover { color: var(--text); }
 
   /* Right: the numbers. */
   .figures { display: grid; grid-template-columns: 1fr auto auto; gap: 5px 14px; align-items: baseline; }
@@ -237,9 +257,18 @@
           <div id="grid" hidden></div>
         </div>
         <div id="relief" hidden></div>
+        <div id="cut" hidden>
+          <div id="cutView"><canvas id="cutCanvas"></canvas></div>
+          <div id="added">
+            <div class="choice"><h2 data-text="addedTitle"></h2><span id="addedActions" class="choice"></span></div>
+            <small data-text="addedHint"></small>
+            <div id="oreRows" class="scroll num"></div>
+          </div>
+        </div>
         <div id="note"></div>
         <div id="under" class="choice">
           <div id="probe" class="num muted"></div>
+          <button id="nextCut" class="action" data-text="nextCut" hidden></button>
           <button id="export" class="action" data-text="export"></button>
         </div>
       </div>
@@ -257,7 +286,7 @@
         <input type="text" id="filter" spellcheck="false">
         <small id="pick"></small>
       </div>
-      <div class="legend"><span></span><span id="listColumn"></span><span class="width" data-text="colWidth"></span><span class="share" data-text="colShare"></span></div>
+      <div class="legend" id="listHead"><span></span><span id="listColumn"></span><span class="width" data-text="colWidth"></span><span class="share" data-text="colShare"></span></div>
       <div id="biomes" class="scroll"></div>
     </div>
   </section>
@@ -354,6 +383,32 @@
     },
     goalFigures: ['flat', 'expanse', 'typical'],
     altitude: v => `height ${v}`,
+    // The section: a cut through the ground, and the ores played on it.
+    section: 'Section',
+    noSection: 'No section for this preview. Generate it again.',
+    nextCut: 'Another cut',
+    nextCutHint: 'The cuts are the lines of this map that cross the most different ground: a height, some sea, some level land.',
+    cutRest: (at, of, z, from, to) => `Cut ${at} of ${of}, west to east at z ${z}, from x ${from} to ${to}. True scale. Wheel: closer.`,
+    cutProbe: (x, y, depth, what, biome) => `x ${x}   height ${y}   ${depth}   ${what}   ${biome}`,
+    cutDepth: depth => depth > 0 ? `${depth} under the ground` : 'above the ground',
+    cutCells: ['Air', 'Rock', 'Water', 'Lava'],
+    cutEarth: 'Top layers',
+    ores: { coal: 'Coal', copper: 'Copper', iron: 'Iron', gold: 'Gold', lapis: 'Lapis', redstone: 'Redstone', diamond: 'Diamond', emerald: 'Emerald' },
+    oreList: ['Ores', 'ore'],
+    oreColumns: ['low ground', 'high ground'],
+    oreColumnsHint: 'Blocks of ore per chunk within 64 blocks under the ground: where the ground is under height 80, and from 80 up. Played four times on this cut.',
+    orePickHint: 'Click an ore to see it alone.',
+    oreFrom: rules => `From: ${rules}`,
+    oreUnplayed: count => `${count} ore rules use a placement step this page cannot play: they are left out.`,
+    addedTitle: 'Added under the ground',
+    addedHint: 'Ores placed at a depth counted from the ground, on top of the others. A change shows at once and stays in this window: nothing is written to the pack. The ground is the generator’s; the ores are played here from the rules the server loaded, counted over a slice 16 blocks thick and drawn over 4.',
+    addedHead: ['', '', 'tries per chunk', 'from', 'to', ''],
+    addedDepthHint: 'Blocks under the ground, from the nearest to the deepest.',
+    addedAdd: name => `+ ${name}`,
+    addedRemove: 'Remove',
+    addedWithout: 'Without them',
+    addedWithoutHint: 'Shows the cut without the ores of this list, to compare.',
+    addedReset: 'Back to the mods’ values',
     legend: {
       flat: ['Flat', 'Slopes', 'Water'],
       temperature: ['Frozen', 'Cold', 'Temperate', 'Warm', 'Scorching'],
@@ -647,7 +702,7 @@
   let in3d = false;
   // What is shown alone in each view, by id: biomes, or bands of ground, height, temperature. A choice
   // lives through the next run, to follow a biome from one try to the other.
-  const chosen = { biomes: new Set(), flat: new Set(), height: new Set(), temperature: new Set() };
+  const chosen = { biomes: new Set(), flat: new Set(), height: new Set(), temperature: new Set(), section: new Set() };
   // Where one band of height ends and the next starts, above the sea.
   const heightSteps = [100, 150, 200, 250];
   // The figures of the run before this one. Kept by the browser, so a reload does not lose them.
@@ -675,7 +730,7 @@
     }
     showSpan();
     const colours = meta.biomes.map(b => biomeColour(b.id));
-    return { ...meta, heights, biomeAt: biomes, colours, ...measure(meta, heights, biomes) };
+    return { ...meta, heights, biomeAt: biomes, colours, ...measure(meta, heights, biomes), section: await loadSection() };
   }
 
   // The sketches a run writes first: the same square with fewer points, each finer than the one
@@ -816,10 +871,11 @@
   const map = $('map');
   const pen = map.getContext('2d');
   const clamp = (v, low, high) => Math.max(low, Math.min(high, v));
-  let drawing3d = Promise.resolve();
+  let drawing3d = Promise.resolve(), drawingCut = Promise.resolve();
 
   function paint() {
     if (!world) return;
+    if (view === 'section' && !exporting) { drawingCut = showCut(); return; }
     const n = world.samples, total = n * n, h = world.heights, sea = world.seaLevel, at = world.biomeAt;
     map.width = map.height = n;
     const image = pen.createImageData(n, n), px = image.data;
@@ -909,6 +965,9 @@
   }
 
   function showList() {
+    // The section's list is its ores, filled when the cut is drawn.
+    if (view === 'section') return;
+    for (const [i, key] of ['colWidth', 'colShare'].entries()) { const head = $('listHead').children[i + 2]; head.textContent = text[key]; head.title = ''; }
     const list = listOf(view), total = world.samples ** 2;
     [$('listTitle').textContent, $('listColumn').textContent] = text.lists[view];
     $('filter').hidden = view !== 'biomes';
@@ -966,9 +1025,10 @@
     });
     $('pick').replaceChildren(...parts, text.pickedShare(percent(100 * cells / world.samples ** 2)), none);
   }
-  $('filter').addEventListener('input', () => { if (world && !world.sketch) showChoice(); });
+  $('filter').addEventListener('input', () => { if (world && !world.sketch && view !== 'section') showChoice(); });
 
   const restProbe = () => {
+    if (view === 'section') { restCut(); return; }
     if (world) $('probe').textContent = text.area(num(world.samples * world.step), num(world.samples * world.step / 8));
   };
   function showWorld() {
@@ -1096,6 +1156,421 @@
     } catch { $('note').textContent = text.no3d; }
   }
 
+  // ---------- the section: a cut through the ground, and the ores played on it ----------
+
+  // The ground of a cut is the generator's own answer, cell by cell. The ores are not: a real ore needs
+  // its chunk generated. They are played here instead, from the rules the server loaded (the placement
+  // steps of each ore, as a data pack writes them), with the game's own way of drawing a height and of
+  // shaping a vein. So the cut shows where the rules put ore and about how much, not the blocks a
+  // world of this seed would hold.
+  const oreColours = { coal: [24, 24, 24], copper: [231, 124, 86], iron: [227, 192, 170], gold: [252, 238, 75],
+                       lapis: [42, 95, 208], redstone: [255, 31, 31], diamond: [93, 236, 245], emerald: [23, 221, 98] };
+  const oreKinds = Object.keys(oreColours);
+  const cutColours = { water: [47, 92, 158], lava: [226, 102, 26], rock: [128, 128, 128], deep: [80, 80, 86], earth: [139, 99, 68] };
+  // The top layers of the ground are earth, sand or gravel, which no ore replaces: about this many blocks.
+  const earthDepth = 3;
+  // Ore near the ground is counted down to this depth, apart under low and under high ground.
+  const nearDepth = 64, highGround = 80, replays = 4;
+  // The ores drawn are those of a slice this thick, in blocks across the cut.
+  const drawnSlice = [6, 10];
+  const caveColour = [46, 42, 40];
+
+  const bare = id => `${id}`.replace(/^minecraft:/, '');
+  function oreKind(rule) {
+    const state = rule.config?.targets?.[0]?.state, id = typeof state === 'string' ? state : state?.Name;
+    const found = /:(?:deepslate_)?(coal|copper|iron|gold|lapis|redstone|diamond|emerald)_ore$/.exec(id || '');
+    return found ? found[1] : null;
+  }
+  // A number a data pack may write as a plain value or as a draw between two bounds.
+  const bounds = v => typeof v === 'number' ? [v, v] : !v ? null
+    : /constant$/.test(v.type) ? bounds(v.value)
+    : /uniform$/.test(v.type) ? [v.min_inclusive ?? v.value?.min_inclusive, v.max_inclusive ?? v.value?.max_inclusive] : null;
+  const steps = new Set(['count', 'rarity_filter', 'in_square', 'height_range', 'heightmap', 'offset', 'biome']);
+  const heights = new Set(['constant', 'uniform', 'trapezoid', 'biased_to_bottom', 'very_biased_to_bottom']);
+  const playable = rule => rule.placement.every(step => steps.has(bare(step.type))
+    && (bare(step.type) !== 'count' || bounds(step.count))
+    && (bare(step.type) !== 'offset' || (bounds(step.x) && bounds(step.y) && bounds(step.z)))
+    && (bare(step.type) !== 'height_range' || heights.has(bare(step.height.type))));
+  // A rule that counts its depth from the ground: the ground's height, then steps down. Those are the
+  // rows that can be changed here.
+  function anchored(rule) {
+    const types = rule.placement.map(step => bare(step.type));
+    const at = types.indexOf('heightmap');
+    if (at < 0 || types.includes('height_range')) return null;
+    let from = 0, to = 0;
+    for (const step of rule.placement.slice(at + 1)) {
+      if (bare(step.type) !== 'offset') continue;
+      const y = bounds(step.y);
+      if (!y) return null;
+      from -= y[1]; to -= y[0];
+    }
+    const count = bounds(rule.placement.find(step => bare(step.type) === 'count')?.count ?? 1);
+    return count && from >= 0 ? { count: count[1], from, to } : null;
+  }
+  // The same depth written the way a data pack must: a step down is 16 blocks at most, so a depth is
+  // several steps, each drawn between its share of the two bounds.
+  function stepsDown(from, to) {
+    const parts = Math.max(1, Math.ceil(to / 16)), list = [];
+    for (let i = 0; i < parts; i++) {
+      const share = v => Math.round(v * (i + 1) / parts) - Math.round(v * i / parts);
+      list.push({ type: 'offset', x: 0, y: { type: 'uniform', min_inclusive: -share(to), max_inclusive: -share(from) }, z: 0 });
+    }
+    return list;
+  }
+
+  async function loadSection() {
+    const read = file => fetch(`/preview/data/${file}`).then(r => r.ok ? r.json() : null).catch(() => null);
+    const [meta, ores] = await Promise.all([read('section.json'), read('ores.json')]);
+    if (!meta?.cuts?.length || !ores) return null;
+    const rules = ores.placements.map((rule, index) => ({ ...rule, index, kind: oreKind(rule) })).filter(rule => rule.kind);
+    for (const rule of rules) { rule.playable = playable(rule); rule.anchored = rule.playable ? anchored(rule) : null; }
+    return { ...meta, rules, biomes: ores.biomes, cells: [], at: 0 };
+  }
+
+  // What is added under the ground: one row per ore, kept by the browser once changed. Until then the
+  // rows are the anchored rules the server loaded, so a pack that already adds such ores shows its own.
+  let oreRows = null, withoutAdded = false, cutShown = null;
+  try { oreRows = JSON.parse(localStorage.getItem('preview.oreRows')); } catch { }
+  const rowsOfMods = section => section.rules.filter(rule => rule.anchored).map(rule => ({ id: rule.id, kind: rule.kind, ...rule.anchored }));
+  function keepRows(rows) {
+    oreRows = rows;
+    try { if (rows) localStorage.setItem('preview.oreRows', JSON.stringify(rows)); else localStorage.removeItem('preview.oreRows'); } catch { }
+  }
+
+  // A draw of numbers that depends on its name alone: the same rule gives the same veins from one
+  // change of a row to the next, so only what was changed moves on the cut.
+  function drawOf(name) {
+    let a = Math.floor(hashOf(name) * 4294967296) | 0;
+    return () => {
+      a = a + 0x6D2B79F5 | 0;
+      let t = Math.imul(a ^ a >>> 15, 1 | a);
+      t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+  }
+
+  // Plays every ore rule on a cut. Gives the ores to draw (one cell each, an index into oreKinds plus
+  // one) and, per ore, the blocks per chunk near the ground, under low and under high ground.
+  function playOres(section, cells, cut, rows) {
+    const L = section.length, H = section.height, minY = section.minY, topY = minY + H - 1;
+    const cellAt = (x, y) => x < 0 || x >= L || y < minY || y > topY ? 0 : cells[(topY - y) * L + x];
+    // Two heights of the ground per column, as the game keeps them: the first block that is not air,
+    // and the first that is neither air nor water (the sea floor under a sea).
+    const surface = new Int16Array(L).fill(minY), floor = new Int16Array(L).fill(minY);
+    for (let x = 0; x < L; x++) {
+      let seen = false;
+      for (let y = topY; y >= minY; y--) {
+        const cell = cellAt(x, y);
+        if (cell && !seen) { surface[x] = y + 1; seen = true; }
+        if (cell === 1 || cell === 3) { floor[x] = y + 1; break; }
+      }
+    }
+    const chunks = L >> 4, high = new Uint8Array(chunks);
+    for (let c = 0; c < chunks; c++) high[c] = Array.from(floor.subarray(c * 16, c * 16 + 16)).sort((a, b) => a - b)[8] >= highGround;
+    const chunkCount = [high.filter(h => !h).length, high.filter(h => h).length];
+
+    const int = (v, draw) => { const [low, top] = bounds(v); return low + Math.floor(draw() * (top - low + 1)); };
+    const anchor = v => 'absolute' in v ? v.absolute : 'above_bottom' in v ? minY + v.above_bottom : topY - v.below_top;
+    const between = (low, top, draw) => top < low ? low : low + Math.floor(draw() * (top - low + 1));
+    // The game's own draws of a height (HeightProvider and its kinds).
+    const height = (h, draw) => {
+      const kind = bare(h.type);
+      if (kind === 'constant') return anchor(h.value);
+      const low = anchor(h.min_inclusive), top = anchor(h.max_inclusive);
+      if (kind === 'uniform') return between(low, top, draw);
+      if (kind === 'trapezoid') {
+        const plateau = h.plateau ?? 0;
+        if (plateau >= top - low) return between(low, top, draw);
+        const side = Math.floor((top - low - plateau) / 2);
+        return low + Math.floor(draw() * (top - low - side + 1)) + Math.floor(draw() * (side + 1));
+      }
+      const inner = h.inner ?? 1;
+      if (kind === 'biased_to_bottom') return low + Math.floor(draw() * (Math.floor(draw() * Math.max(1, top - low - inner + 1)) + inner));
+      const first = between(low + inner, top, draw), second = between(low, first - 1, draw);
+      return between(low, second - 1 + inner, draw);
+    };
+    // Where a rule tries, in one chunk: its steps, one after the other, each turning a place into none, one or several.
+    const tries = (placement, x0, draw) => {
+      let places = [[x0, 0, 0]];
+      for (const step of placement) {
+        const next = [];
+        for (const [x, y, z] of places) {
+          switch (bare(step.type)) {
+            case 'count': for (let n = int(step.count, draw); n > 0; n--) next.push([x, y, z]); break;
+            case 'rarity_filter': if (draw() < 1 / step.chance) next.push([x, y, z]); break;
+            case 'in_square': next.push([x + Math.floor(draw() * 16), y, z + Math.floor(draw() * 16)]); break;
+            case 'height_range': next.push([x, height(step.height, draw), z]); break;
+            case 'heightmap': {
+              const ground = (/OCEAN_FLOOR/.test(step.heightmap) ? floor : surface)[clamp(x, 0, L - 1)];
+              if (ground > minY) next.push([x, ground, z]);
+              break;
+            }
+            case 'offset': next.push([x + int(step.x, draw), y + int(step.y, draw), z + int(step.z, draw)]); break;
+            default: next.push([x, y, z]);
+          }
+        }
+        places = next;
+      }
+      return places;
+    };
+    // A vein, the way the game's ore feature shapes it: balls along a short slanted line.
+    const vein = (ox, oy, oz, size, draw, put) => {
+      const angle = draw() * Math.PI, reach = size / 8;
+      const x0 = ox + Math.sin(angle) * reach, x1 = ox - Math.sin(angle) * reach;
+      const z0 = oz + Math.cos(angle) * reach, z1 = oz - Math.cos(angle) * reach;
+      const y0 = oy + Math.floor(draw() * 3) - 2, y1 = oy + Math.floor(draw() * 3) - 2;
+      const balls = [];
+      for (let i = 0; i < size; i++) {
+        const t = i / size, r = draw() * size / 16;
+        balls.push([x0 + (x1 - x0) * t, y0 + (y1 - y0) * t, z0 + (z1 - z0) * t, ((Math.sin(Math.PI * t) + 1) * r + 1) / 2]);
+      }
+      // A ball inside another one adds nothing.
+      for (let i = 0; i < size - 1; i++) for (let j = i + 1; j < size; j++) {
+        const a = balls[i], b = balls[j];
+        if (a[3] <= 0 || b[3] <= 0) continue;
+        const gap = a[3] - b[3];
+        if (gap * gap > (a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2) { if (gap > 0) b[3] = -1; else a[3] = -1; }
+      }
+      const done = new Set();
+      for (const [cx, cy, cz, r] of balls) {
+        if (r < 0) continue;
+        for (let x = Math.floor(cx - r); x <= Math.floor(cx + r); x++) for (let y = Math.floor(cy - r); y <= Math.floor(cy + r); y++)
+          for (let z = Math.floor(cz - r); z <= Math.floor(cz + r); z++) {
+            if (((x + 0.5 - cx) / r) ** 2 + ((y + 0.5 - cy) / r) ** 2 + ((z + 0.5 - cz) / r) ** 2 >= 1) continue;
+            const key = (x + 64) * 1048576 + (y + 512) * 1024 + (z + 64);
+            if (!done.has(key)) { done.add(key); put(x, y, z); }
+          }
+      }
+    };
+
+    // The rules of each chunk are those its surface biome lists. A row takes the place of the anchored
+    // rule it came from; a row added here goes to every chunk, with the vein of the most tried rule of its ore.
+    const row = z => Math.round((cut.z - world.originZ) / world.step);
+    const veinOf = kind => section.rules.filter(rule => rule.kind === kind && rule.playable && !rule.anchored)
+      .sort((a, b) => (bounds(b.placement[0].count)?.[1] ?? 0) - (bounds(a.placement[0].count)?.[1] ?? 0))[0];
+    const plays = [];
+    for (const rule of section.rules) if (rule.playable && !rule.anchored) plays.push({ rule, name: rule.id, kind: rule.kind, config: rule.config, placement: rule.placement });
+    if (!withoutAdded) for (const added of rows) {
+      const rule = section.rules.find(r => r.id === added.id), config = (rule ?? veinOf(added.kind))?.config;
+      if (!config || !(added.count > 0) || added.to < added.from) continue;
+      plays.push({ rule, name: added.id, kind: added.kind, config, everywhere: !rule, placement: [
+        { type: 'count', count: added.count }, { type: 'in_square' }, { type: 'heightmap', heightmap: 'OCEAN_FLOOR_WG' }, ...stepsDown(added.from, added.to)] });
+    }
+    const layer = new Uint8Array(L * H), near = plays.map(() => [0, 0]), whole = plays.map(() => 0);
+    plays.forEach((play, at) => {
+      const kind = oreKinds.indexOf(play.kind) + 1, skipAir = play.config.discard_chance_on_air_exposure ?? 0;
+      for (let replay = 0; replay < replays; replay++) {
+        const draw = drawOf(`${world.seed}/${section.at}/${play.name}/${replay}`);
+        const put = (x, y, z) => {
+          if (cellAt(x, y) !== 1 || (y < floor[x] && y >= floor[x] - earthDepth)) return;
+          // A vein in the open is often thrown away, block by block: the game looks at the six neighbours, the cut has four.
+          if (skipAir > 0 && (skipAir >= 1 || draw() < skipAir) && !(cellAt(x - 1, y) && cellAt(x + 1, y) && cellAt(x, y - 1) && cellAt(x, y + 1))) return;
+          // Counted over the whole chunk, 16 blocks thick; drawn from a thinner slice, or the cut would be covered with ore.
+          if (!replay && z >= drawnSlice[0] && z < drawnSlice[1]) layer[(topY - y) * L + x] = kind;
+          const depth = floor[x] - y;
+          whole[at]++;
+          if (depth >= 1 && depth <= nearDepth) near[at][high[x >> 4]]++;
+        };
+        for (let c = 0; c < chunks; c++) {
+          if (!play.everywhere) {
+            const biome = world.biomes[world.biomeAt[row() * world.samples + Math.floor((cut.x + c * 16 - world.originX) / world.step)]]?.id;
+            if (!section.biomes[biome]?.includes(play.rule.index)) continue;
+          }
+          for (const [x, y, z] of tries(play.placement, c * 16, draw)) {
+            // A try far above the ground meets only air.
+            if (y > minY && y - 12 <= Math.max(floor[clamp(x - 8, 0, L - 1)], floor[clamp(x, 0, L - 1)], floor[clamp(x + 8, 0, L - 1)])) vein(x, y, z, play.config.size, draw, put);
+          }
+        }
+      }
+    });
+    // Per ore: blocks per chunk near the ground, under low and under high ground, and the rules it came from.
+    const perChunk = {};
+    plays.forEach((play, at) => {
+      const ore = perChunk[play.kind] ??= { low: 0, high: 0, column: 0, from: [] };
+      ore.column += whole[at] / replays / chunks;
+      ore.low += chunkCount[0] ? near[at][0] / replays / chunkCount[0] : 0;
+      ore.high += chunkCount[1] ? near[at][1] / replays / chunkCount[1] : 0;
+      ore.from.push(play.name);
+    });
+    for (const ore of Object.values(perChunk)) { if (!chunkCount[0]) ore.low = null; if (!chunkCount[1]) ore.high = null; }
+    return { layer, surface, floor, perChunk };
+  }
+
+  // The cut may be looked at closer, like the map: k is screen pixels per block, x and y where its corner went.
+  const cutView = $('cutView'), cutCanvas = $('cutCanvas'), cutLook = { k: 0, x: 0, y: 0 };
+  function showCutLook() {
+    if (!cutShown) return;
+    const box = cutView.getBoundingClientRect(), fit = box.width / cutCanvas.width;
+    cutLook.k = clamp(cutLook.k || fit, fit, 12);
+    const wide = cutCanvas.width * cutLook.k, tall = cutCanvas.height * cutLook.k;
+    cutLook.x = clamp(cutLook.x, box.width - wide, 0);
+    // A cut lower than its window sits on the window's bottom line, as on a ground.
+    cutLook.y = tall <= box.height ? box.height - tall : clamp(cutLook.y, box.height - tall, 0);
+    Object.assign(cutCanvas.style, { width: `${wide}px`, height: `${tall}px`, transform: `translate(${cutLook.x}px, ${cutLook.y}px)` });
+    // Seen from afar an ore of one block is lost between two pixels: there it is drawn two blocks wide.
+    if ((cutLook.k < 0.75) !== cutShown.thick) drawCut();
+  }
+  function drawCut() {
+    const { section, cells, played } = cutShown;
+    const L = section.length, H = section.height, minY = section.minY, topY = minY + H - 1;
+    // The empty sky above the highest ground is left out.
+    const crop = Math.max(0, topY - Math.max(...played.surface) - 24), rows = H - crop;
+    cutCanvas.width = L; cutCanvas.height = rows;
+    const brush = cutCanvas.getContext('2d'), image = brush.createImageData(L, rows), px = image.data;
+    const picked = chosen.section, thick = cutLook.k < 0.75;
+    for (let r = 0; r < rows; r++) for (let x = 0; x < L; x++) {
+      const y = topY - crop - r, cell = cells[(crop + r) * L + x];
+      // The sky is the page's own ground; a cave is a hollow, darker than the rock around it.
+      if (!cell && y >= played.surface[x]) continue;
+      const c = !cell ? caveColour : cell === 2 ? cutColours.water : cell === 3 ? cutColours.lava
+        : y < played.floor[x] && y >= played.floor[x] - earthDepth ? cutColours.earth : y < 4 ? cutColours.deep : cutColours.rock;
+      const i = (r * L + x) * 4;
+      px[i] = c[0]; px[i + 1] = c[1]; px[i + 2] = c[2]; px[i + 3] = 255;
+    }
+    for (let r = 0; r < rows; r++) for (let x = 0; x < L; x++) {
+      const ore = played.layer[(crop + r) * L + x];
+      if (!ore || (picked.size && !picked.has(oreKinds[ore - 1]))) continue;
+      const c = oreColours[oreKinds[ore - 1]], reach = thick ? 1 : 0;
+      for (let dr = 0; dr <= reach; dr++) for (let dx = 0; dx <= reach; dx++) {
+        if (r + dr < 0 || r + dr >= rows || x + dx < 0 || x + dx >= L) continue;
+        const i = ((r + dr) * L + x + dx) * 4;
+        px[i] = c[0]; px[i + 1] = c[1]; px[i + 2] = c[2]; px[i + 3] = 255;
+      }
+    }
+    brush.putImageData(image, 0, 0);
+    Object.assign(cutShown, { crop, thick });
+  }
+
+  // Draws the cut of the section, plays the ores on it, and fills the list of ores and the rows.
+  async function showCut(rebuildRows = true) {
+    const section = world?.section;
+    if (!section) { cutShown = null; return; }
+    const cut = section.cuts[section.at];
+    section.cells[section.at] ??= await fetch(`/preview/data/${cut.file}`).then(r => r.arrayBuffer()).then(b => new Uint8Array(b));
+    const cells = section.cells[section.at];
+    if (world?.section !== section || cells.length !== section.length * section.height) return;
+    const rows = oreRows ?? rowsOfMods(section);
+    const played = playOres(section, cells, cut, rows);
+    const fresh = cutShown?.section !== section || cutShown.cut !== cut;
+    cutShown = { section, cut, cells, played, perChunk: played.perChunk, thick: null };
+    if (fresh) cutLook.k = cutLook.x = cutLook.y = 0;
+    drawCut(); showCutLook(); showOres();
+    if (rebuildRows) showRows(rows);
+    restProbe();
+  }
+
+  function showOres() {
+    const { perChunk, section } = cutShown, picked = chosen.section;
+    [$('listTitle').textContent, $('listColumn').textContent] = text.oreList;
+    text.oreColumns.forEach((name, i) => { const head = $('listHead').children[i + 2]; head.textContent = name; head.title = text.oreColumnsHint; });
+    $('filter').hidden = true;
+    const figure = v => v == null ? '–' : num(v, 1);
+    $('biomes').replaceChildren(...oreKinds.filter(kind => perChunk[kind]).map(kind => {
+      const row = document.createElement('button');
+      row.className = 'biome num';
+      row.innerHTML = '<i></i><span class="name"></span><span class="width"></span><span class="share"></span>';
+      row.children[0].style.background = css(oreColours[kind]);
+      row.children[1].textContent = text.ores[kind];
+      row.children[2].textContent = figure(perChunk[kind].low);
+      row.children[3].textContent = figure(perChunk[kind].high);
+      row.title = text.oreFrom(perChunk[kind].from.join(', '));
+      row.setAttribute('aria-pressed', picked.has(kind));
+      row.addEventListener('click', () => { if (!picked.delete(kind)) picked.add(kind); drawCut(); showOres(); });
+      return row;
+    }));
+    $('biomes').classList.toggle('choosing', picked.size > 0);
+    const unplayed = section.rules.filter(rule => !rule.playable).length;
+    $('pick').replaceChildren(unplayed ? text.oreUnplayed(unplayed) : text.orePickHint);
+  }
+
+  // The rows of what is added: an ore, how many tries a chunk gets, and between which depths.
+  function showRows(rows) {
+    const section = world.section;
+    const change = next => { keepRows(next); drawingCut = showCut(); };
+    const action = (label, act, pressed, hint) => {
+      const b = document.createElement('button');
+      b.textContent = label; b.title = hint || '';
+      if (pressed == null) b.className = 'action'; else b.setAttribute('aria-pressed', pressed);
+      b.addEventListener('click', act);
+      return b;
+    };
+    const free = oreKinds.filter(kind => !rows.some(row => row.kind === kind) && section.rules.some(rule => rule.kind === kind && rule.playable && !rule.anchored));
+    $('addedActions').replaceChildren(
+      ...free.map(kind => action(text.addedAdd(text.ores[kind].toLowerCase()), () => change([...rows, { id: `added/${kind}`, kind, count: 2, from: 8, to: 32 }]))),
+      ...(rows.length ? [action(text.addedWithout, () => { withoutAdded = !withoutAdded; drawingCut = showCut(); }, withoutAdded, text.addedWithoutHint)] : []),
+      ...(oreRows ? [action(text.addedReset, () => change(null))] : []));
+    const head = document.createElement('div');
+    head.className = 'ore-row head';
+    head.append(...text.addedHead.map(name => { const span = document.createElement('span'); span.textContent = name; if (name === 'from' || name === 'to') span.title = text.addedDepthHint; return span; }));
+    $('oreRows').replaceChildren(...(rows.length ? [head] : []), ...rows.map((row, at) => {
+      const line = document.createElement('div');
+      line.className = 'ore-row';
+      line.innerHTML = '<i></i><span></span><input type="number" min="0" max="64"><input type="number" min="0" max="160"><input type="number" min="0" max="160"><button>×</button>';
+      line.children[0].style.background = css(oreColours[row.kind]);
+      line.children[1].textContent = text.ores[row.kind];
+      line.children[1].title = row.id;
+      ['count', 'from', 'to'].forEach((key, i) => {
+        const input = line.children[i + 2];
+        input.value = row[key];
+        // The rows are not rebuilt while a value is typed, so the field keeps the cursor.
+        input.addEventListener('input', () => {
+          if (input.value === '' || !(+input.value >= 0)) return;
+          keepRows(rows.map((r, j) => j === at ? Object.assign(r, { [key]: Math.round(+input.value) }) : r));
+          drawingCut = showCut(false);
+        });
+      });
+      line.children[5].title = text.addedRemove;
+      line.children[5].addEventListener('click', () => change(rows.filter((_, j) => j !== at)));
+      return line;
+    }));
+  }
+
+  function restCut() {
+    if (!cutShown) { $('probe').textContent = ''; return; }
+    const { section, cut } = cutShown;
+    $('probe').textContent = text.cutRest(section.at + 1, section.cuts.length, num(cut.z), num(cut.x), num(cut.x + section.length));
+  }
+  $('nextCut').title = text.nextCutHint;
+  $('nextCut').addEventListener('click', () => {
+    const section = world?.section;
+    if (!section) return;
+    section.at = (section.at + 1) % section.cuts.length;
+    drawingCut = showCut();
+  });
+  cutView.addEventListener('wheel', event => {
+    event.preventDefault();
+    if (!cutShown) return;
+    const box = cutView.getBoundingClientRect(), px = event.clientX - box.left, py = event.clientY - box.top;
+    const k = clamp(cutLook.k * (event.deltaY < 0 ? 1.25 : 0.8), box.width / cutCanvas.width, 12);
+    cutLook.x = px - (px - cutLook.x) * k / cutLook.k; cutLook.y = py - (py - cutLook.y) * k / cutLook.k; cutLook.k = k;
+    showCutLook();
+  }, { passive: false });
+  let cutCarry = null;
+  cutView.addEventListener('pointerdown', event => {
+    if (event.button !== 0) return;
+    cutCarry = { x: event.clientX, y: event.clientY, lookX: cutLook.x, lookY: cutLook.y };
+    cutView.setPointerCapture(event.pointerId);
+  });
+  cutView.addEventListener('pointermove', event => {
+    if (cutCarry) {
+      cutLook.x = cutCarry.lookX + event.clientX - cutCarry.x; cutLook.y = cutCarry.lookY + event.clientY - cutCarry.y;
+      showCutLook();
+      return;
+    }
+    if (!cutShown) return;
+    const { section, cut, cells, played, crop } = cutShown, box = cutCanvas.getBoundingClientRect();
+    const x = Math.floor((event.clientX - box.left) / cutLook.k), r = Math.floor((event.clientY - box.top) / cutLook.k);
+    if (x < 0 || x >= section.length || r < 0 || r >= cutCanvas.height) { restCut(); return; }
+    const y = section.minY + section.height - 1 - crop - r, cell = cells[(crop + r) * section.length + x];
+    const ore = played.layer[(crop + r) * section.length + x];
+    const what = ore ? text.ores[oreKinds[ore - 1]] : cell === 1 && y >= played.floor[x] - earthDepth ? text.cutEarth : text.cutCells[cell];
+    const biome = world.biomes[world.biomeAt[Math.round((cut.z - world.originZ) / world.step) * world.samples + Math.floor((cut.x + x - world.originX) / world.step)]];
+    $('probe').textContent = text.cutProbe(num(cut.x + x), y, text.cutDepth(played.floor[x] - y), what, biome ? pretty(biome.id) : '');
+  });
+  for (const end of ['pointerup', 'pointercancel']) cutView.addEventListener(end, () => { cutCarry = null; });
+  cutView.addEventListener('mouseleave', restCut);
+  addEventListener('resize', showCutLook);
+
   // ---------- tabs: what the map shows on the left, and its shape on the right, flat or draped over the relief.
   // Two choices of the same kind, each with one answer always lit: nothing here is a switch to turn off.
 
@@ -1103,14 +1578,22 @@
     for (const tab of $('tabs').children) {
       const key = tab.dataset.view;
       tab.setAttribute('aria-pressed', key in text.shapes ? (key === 'relief3d') === in3d : key === view);
+      // A cut has one shape only.
+      if (key in text.shapes) tab.hidden = view === 'section';
     }
-    $('relief').hidden = !in3d;
+    const cut = view === 'section';
+    $('frame').classList.toggle('cut', cut);
+    $('relief').hidden = !in3d || cut;
+    $('flat').hidden = cut;
+    $('cut').hidden = !cut || !world?.section;
+    $('nextCut').hidden = !cut || !world?.section;
     map.style.visibility = in3d ? 'hidden' : 'visible';
     $('grid').hidden = in3d || !world;
-    $('note').textContent = world ? '' : text.noPreview;
+    $('note').textContent = !world ? text.noPreview : cut && !world.section ? text.noSection : '';
     paint();
+    restProbe();
   }
-  for (const [key, label] of [...Object.entries(text.views), ...Object.entries(text.shapes)]) {
+  for (const [key, label] of [...Object.entries(text.views), ['section', text.section], ...Object.entries(text.shapes)]) {
     const tab = document.createElement('button');
     tab.textContent = label;
     tab.dataset.view = key;
@@ -1292,12 +1775,15 @@
           .filter(row => row.share).sort((a, b) => kind === 'biomes' ? b.share - a.share : 0);
         done.push([text.exportStep(text.views[kind]), seconds()]);
       }
+      // The cut as it was last drawn, and what is added to it.
+      if (cutShown) await send('section.png', await new Promise(resolve => $('cutCanvas').toBlob(resolve)));
       await step(text.exportData);
       const sameSpan = before && before.span === world.figures.span;
       const { folder } = await send('export.json', JSON.stringify({
         seed: shown?.seed, blocks: world.samples * world.step, seaLevel: world.seaLevel,
         tectonic: shown?.values, pack: packValues,
         figures: world.figures, figuresBefore: sameSpan ? before : null, lists,
+        ores: cutShown ? { added: oreRows, perChunk: cutShown.perChunk } : null,
       }, null, 2));
       done.push([text.exportData, seconds()]);
       said = text.exported(folder);
@@ -1341,6 +1827,7 @@
   for (const key of (asked.get('view') || '').split(',')) $('tabs').querySelector(`[data-view="${key}"]`)?.click();
   // Tells a capture that everything asked for is drawn (see scripts/capture.ps1).
   await drawing3d;
+  await drawingCut;
   document.documentElement.dataset.ready = '1';
 
   setInterval(() => fetch('/api/ping').catch(() => say(text.serverGone)), 10000);
