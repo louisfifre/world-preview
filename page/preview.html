@@ -45,7 +45,7 @@
     padding: 24px 28px;
     overflow: hidden;
     display: grid;
-    grid-template-columns: 280px minmax(0, 1fr) 290px;
+    grid-template-columns: 310px minmax(0, 1fr) 320px;
     gap: 28px;
     background: var(--ground);
     color: var(--text);
@@ -125,7 +125,7 @@
   .step { display: grid; grid-template-columns: 14px 1fr auto; gap: 6px; align-items: baseline; color: var(--muted); }
   .step.now { color: var(--text); font-weight: 600; }
   #steps .bar { height: 1px; margin: 5px 0 3px; background: linear-gradient(var(--text), var(--text)) 0 0 / calc(var(--share) * 100%) 100% no-repeat, var(--track); }
-  #status { min-height: 18px; font-size: 13px; color: var(--muted); }
+  #status { min-height: 18px; font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
   #status.trouble { color: var(--warn); }
   #generate {
     flex: none; height: 48px; padding: 9px 0 0; border-radius: 0; font-weight: 600; color: #fff;
@@ -285,6 +285,8 @@
     export: 'Export',
     exportHint: 'Keeps the settings, the figures, and a picture of each view, flat and in 3D as it is looked at now, in a folder.',
     exporting: 'Exporting…',
+    exportStep: view => `Pictures: ${view}`,
+    exportData: 'Settings and figures',
     exported: folder => `Exported to ${folder}`,
     exportFailed: 'The export failed.',
     figures: 'In figures',
@@ -1231,6 +1233,7 @@
   }
 
   $('generate').addEventListener('click', () => {
+    if (exporting) return;
     if (busy) {
       // One press is enough: the run ends a moment later, and the wait for it says so.
       $('generate').disabled = true;
@@ -1264,11 +1267,21 @@
     };
     const was = view;
     exporting = true;
-    $('probe').textContent = text.exporting;
-    let word;
+    trouble = said = '';
+    $('status').className = '';
+    $('status').textContent = text.exporting;
+    // The export says where it is in the same place as a run does, and takes the place of its steps.
+    const started = Date.now(), seconds = () => Math.round((Date.now() - started) / 1000);
+    const done = [], kinds = Object.keys(text.views);
+    const step = async label => {
+      showSteps(done, label, seconds(), done.length / (kinds.length + 1), '');
+      // Drawing a wide map holds the page: let it show the step first.
+      await new Promise(resolve => setTimeout(resolve, 30));
+    };
     try {
       const total = world.samples ** 2, lists = {};
-      for (const kind of Object.keys(text.views)) {
+      for (const kind of kinds) {
+        await step(text.exportStep(text.views[kind]));
         view = kind;
         paint();
         await send(`${kind}.png`, await new Promise(resolve => map.toBlob(resolve)));
@@ -1277,19 +1290,23 @@
         const list = listOf(kind);
         lists[kind] = list.ids.map((id, i) => ({ id, name: list.names[i], share: 100 * list.cells[i] / total, width: Math.round(list.widths[i]) }))
           .filter(row => row.share).sort((a, b) => kind === 'biomes' ? b.share - a.share : 0);
+        done.push([text.exportStep(text.views[kind]), seconds()]);
       }
+      await step(text.exportData);
       const sameSpan = before && before.span === world.figures.span;
       const { folder } = await send('export.json', JSON.stringify({
         seed: shown?.seed, blocks: world.samples * world.step, seaLevel: world.seaLevel,
         tectonic: shown?.values, pack: packValues,
         figures: world.figures, figuresBefore: sameSpan ? before : null, lists,
       }, null, 2));
-      word = text.exported(folder);
-    } catch (e) { word = e.message || text.exportFailed; }
+      done.push([text.exportData, seconds()]);
+      said = text.exported(folder);
+    } catch (e) { trouble = e.message || text.exportFailed; }
     view = was;
     exporting = false;
     paint();
-    $('probe').textContent = word;
+    showSteps(done, '', 0, done.length / (kinds.length + 1), '');
+    showButton();
   });
   world = await loadWorld();
   if (world) showWorld(); else showTabs();
