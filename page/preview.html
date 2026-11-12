@@ -167,6 +167,23 @@
   }
   #status.trouble { color: var(--warn); }
   #run { flex: none; display: flex; flex-direction: column; gap: 8px; }
+  #controls { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 22px; }
+  /* On a short window the seed, the area and the head would leave the groups a sliver: everything above
+     the button scrolls as one list instead, the group titles still pinned, and the button and its line stay
+     at the foot. The spaces tighten a little, the button too. */
+  @media (max-height: 800px) {
+    body { padding-top: 16px; padding-bottom: 16px; }
+    .column { gap: 16px; }
+    #controls {
+      gap: 16px; overflow-y: auto; margin-right: -10px; padding: 0 10px 28px 0;
+      scrollbar-width: thin; scrollbar-color: var(--line) transparent;
+      -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent);
+              mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent);
+    }
+    #settings { flex: none; overflow: visible; margin-right: 0; padding: 0; -webkit-mask-image: none; mask-image: none; }
+    #run { gap: 6px; }
+    #generate { height: 40px; padding-top: 6px; }
+  }
   /* The button always says what it does. When there is nothing to compute it turns to grey
      stone, and the line above it says why. Its texture is drawn by the script, 16 texels high. */
   #generate {
@@ -299,20 +316,22 @@
 </head>
 <body>
   <section class="column">
-    <div>
-      <h2 data-text="seed"></h2>
-      <input type="text" id="seed" maxlength="64" spellcheck="false">
+    <div id="controls">
+      <div>
+        <h2 data-text="seed"></h2>
+        <input type="text" id="seed" maxlength="64" spellcheck="false">
+      </div>
+      <div class="setting">
+        <h2 data-text="span"></h2><output class="num" id="areaValue" for="area"></output>
+        <input type="range" id="area" min="256" max="2048" step="256">
+        <small id="areaHint"></small>
+      </div>
+      <div>
+        <h2 data-text="profiles"></h2>
+        <div id="profiles" class="choice"></div>
+      </div>
+      <div id="settings" class="scroll"></div>
     </div>
-    <div class="setting">
-      <h2 data-text="span"></h2><output class="num" id="areaValue" for="area"></output>
-      <input type="range" id="area" min="256" max="2048" step="256">
-      <small id="areaHint"></small>
-    </div>
-    <div>
-      <h2 data-text="profiles"></h2>
-      <div id="profiles" class="choice"></div>
-    </div>
-    <div id="settings" class="scroll"></div>
     <div id="run">
       <div id="status" role="status"></div>
       <button id="generate" data-text="generate"></button>
@@ -681,9 +700,14 @@
   }
   // The first group a view names is the one it is most about: the list scrolls as little as it takes to
   // show it whole, or from its title when it is taller than the list.
-  function openGroupsFor(shown) {
+  function openGroupsFor(shown, scroll = true) {
     for (const key in groups) openGroup(key, opensFor[shown].includes(key));
-    const list = $('settings'), first = groups[opensFor[shown][0]].box, top = first.offsetTop - list.offsetTop;
+    // A window just opened starts at its top, on the seed.
+    if (!scroll) return;
+    // What scrolls is the list of groups, or on a short window the whole column above the button.
+    const list = getComputedStyle($('controls')).overflowY === 'auto' ? $('controls') : $('settings');
+    const first = groups[opensFor[shown][0]].box;
+    const top = first.getBoundingClientRect().top - list.getBoundingClientRect().top + list.scrollTop;
     // The list's own room, less the fade at its foot.
     const room = list.clientHeight - 28;
     list.scrollTop = first.hidden ? 0 : first.offsetHeight > room ? top : Math.max(0, top + first.offsetHeight - room);
@@ -2047,7 +2071,7 @@
     });
     $('tabs').append(tab);
   }
-  openGroupsFor(view);
+  openGroupsFor(view, false);
 
   // ---------- generating ----------
 
