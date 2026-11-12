@@ -126,7 +126,7 @@ foreach ($mod in $Mods) {
     if (-not (Test-Path $mod)) { throw "The mod to add was not found: $mod" }
     Copy-Item $mod (Join-Path $Dir 'mods')
 }
-[IO.File]::WriteAllLines($addedFile, [string[]]@($Mods | ForEach-Object { Split-Path $_ -Leaf }))
+[IO.File]::WriteAllLines($addedFile, [string[]]@($Mods | Where-Object { $_ } | ForEach-Object { Split-Path $_ -Leaf }))
 
 # 3. The Tectonic config for this run: the pack's file, with the asked values replaced.
 $config = [IO.File]::ReadAllText((Join-Path $Pack 'config\tectonic.json'))
