@@ -20,7 +20,11 @@ The folder holding the pack's pack.toml, as in preview.ps1. Read from WORLD_PREV
 
 .PARAMETER Dir
 The work folder of the throwaway server, as in preview.ps1. run\preview when omitted. The
-captured previews land in its out-capture folder.
+captured previews land in its out-capture folder, or the one -Previews names.
+
+.PARAMETER Previews
+The folder of the work folder where the captured previews land: out-capture when omitted. Another
+name keeps the previews of two people capturing at once apart, since a computation replaces them.
 
 .PARAMETER Shots
 One hashtable per picture. Name is the file name. Path defaults to /. Size defaults to
@@ -49,6 +53,7 @@ Where the pictures land. run\captures when omitted (not versioned).
 param(
     [string]$Pack,
     [string]$Dir,
+    [string]$Previews = 'out-capture',
     [hashtable[]]$Shots,
     [string]$Seed,
     [hashtable]$Tectonic = @{},
@@ -66,7 +71,7 @@ if ($needsServer) {
     $Pack = Resolve-Pack $Pack
     if (-not $Dir) { $Dir = $DefaultDir }
     $Dir = [IO.Path]::GetFullPath($Dir)
-    $PreviewOut = Join-Path $Dir 'out-capture'
+    $PreviewOut = Join-Path $Dir $Previews
 }
 if (-not $OutDir) { $OutDir = Join-Path $RepoRoot 'run\captures' }
 New-Item -ItemType Directory -Force $OutDir | Out-Null
@@ -77,6 +82,8 @@ if (-not $Shots) {
         @{ Name = 'flat';            Path = '/?view=flat' }
         @{ Name = 'relief';          Path = '/?view=height' }
         @{ Name = 'temperature';     Path = '/?view=temperature' }
+        @{ Name = 'structures';      Path = '/?view=structures' }
+        @{ Name = 'section';         Path = '/?view=section' }
         @{ Name = '3d';              Path = '/?view=height,relief3d' }
         @{ Name = 'chosen-biomes';   Path = '/?biome=minecraft:desert,minecraft:badlands' }
         @{ Name = 'light';           Scheme = 'light' }
