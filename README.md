@@ -10,9 +10,9 @@ It was written while tuning a modpack's terrain, where every try used to mean st
 
 <img src="docs/media/board-window.png" alt="The preview window: seed, width of the scanned area and ten terrain sliders on the left, the map in the middle, the figures and the list of biomes on the right." width="100%">
 
-- **The real generator, without the world.** A throwaway dedicated server starts with the pack, and a small mod asks the generator two questions on a grid, one point every 16 blocks: how high is the ground, which biome is at the surface. No chunk is generated. Trees, structures and caves are therefore not on the map.
+- **The real generator, without the world.** A throwaway dedicated server starts with the pack, and a small mod asks the generator two questions on a grid, one point every 16 blocks: how high is the ground, which biome is at the surface. No chunk is generated. Trees and caves are therefore not on the map, and a structure is a point where it would start.
 - **A seed and twelve sliders.** The sliders are [Tectonic](https://modrinth.com/mod/tectonic)'s values for the size and climate of biomes, the relief, and the continents. They start at the pack's values; a changed one keeps the pack's value beside it. Sets of values can be kept under a name.
-- **Sketches first, then the map.** A coarse sketch takes the map's place while the full map is computed, then finer ones replace it: on the widest area, one point every 256 blocks, then 64, then 32 (see the timings below). The steps of the run are listed where the button is, each with the second it ended at, and the button stops the run.
+- **Sketches first, then the map.** A coarse sketch takes the map's place while the full map is computed, then finer ones replace it: on the widest area, one point every 256 blocks, then 64, then 32 (see the timings below). The steps of the run are listed under the map, each with the second it ended at, and the button stops the run.
 - **The machine stays usable.** The computation takes half of the processor's threads and runs below the normal priority, so the page and everything else keep answering while it works. It is slower for it, on purpose.
 - **Nothing is written to the pack.** A preview changes the config of its own throwaway server only.
 
@@ -30,7 +30,9 @@ It was written while tuning a modpack's terrain, where every try used to mean st
 <img src="docs/media/board-relief.png" alt="The biome map draped over the real heights, seen from low above the sea." width="100%">
 
 - **Draped over the real heights.** Any view can be shown in 3D, at true scale: one unit is one block, heights included.
-- **A cut through the ground, with its ores.** The Section view shows a line of 2048 blocks from the bottom of the world to its top, at true scale: the generator's own rock, caves, water and lava. The ores are played on it from the rules the server loaded, those of the game and of every mod, and counted near the ground, under low and under high ground. Ores placed at a depth counted from the ground can be added or changed in rows, and the cut follows at once.
+- **The settings of the view looked at.** The sliders are in groups, and each view opens the groups that move it: the relief for the Relief view, the climate for Temperature. The others stay in the list, closed, and say when they hold a changed value.
+- **Where structures would start.** The Structures view marks every village, outpost, wreck or ruin the generator would start in the area, those of the mods included, with how many there are and how far apart. The ones built under the ground step back, so the ones met on the surface read first. A kind can be shown alone, like a biome.
+- **A cut through the ground, with its ores.** The Section view shows a line across the whole area, from the bottom of the world to its top: a strip of its whole length, and the part chosen on it at true scale, with the generator's own rock, caves, water and lava. The ores are played on it from the rules the server loaded, those of the game and of every mod, and counted near the ground, under low and under high ground. Ores placed at a depth counted from the ground can be added or changed in rows beside the sliders, and the cut follows at once.
 - **A try can be kept.** Export writes a folder under `run\preview\exports`: the settings and the figures in one file, and a picture of each view, flat and in 3D.
 
 ## Requirements
@@ -102,7 +104,8 @@ Most of the first sketch's wait is the server start. A seed run for the first ti
 
 ## Limits
 
-- No trees, structures or caves: the map answers "how big, how high, how much", not "is this biome pleasant to walk in".
+- No trees or caves: the map answers "how big, how high, how much", not "is this biome pleasant to walk in".
+- A structure is the point where it would start, not what it covers, and nothing of what a real chunk does to it later. Compared once with a real world of the same pack: the 111 starts its chunks held were all at the point given, 43 of them one chunk aside, the centre of a first piece that lies next to its start chunk.
 - The ores of a cut are a play of the rules on the real ground, not the blocks a world would hold: compared once with real chunks, it gave a fifth to a half more ore. It compares one setting with another.
 - The sketches skip the aquifers (the game's underground water and lava) and read fewer points: close to the full map, not proven exact.
 - Windows only: the scripts lean on PowerShell, the Windows registry to find the browser, and Windows Forms for the tray icon.
