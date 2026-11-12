@@ -74,13 +74,13 @@ final class Sampler {
 	 * What every column needs, read once from the generator. {@code dry} is the generator's settings
 	 * without aquifers, for the coarse pass.
 	 */
-	private record Generator(ServerLevel level, NoiseBasedChunkGenerator generator, NoiseGeneratorSettings settings,
+	record Generator(ServerLevel level, NoiseBasedChunkGenerator generator, NoiseGeneratorSettings settings,
 			NoiseGeneratorSettings dry, NoiseSettings noise, RandomState randomState,
 			Supplier<Aquifer.FluidPicker> fluidPicker) {
 	}
 
 	/** One pass: the ground height and the surface biome of each point. */
-	private record Grid(int samples, int step, int origin, short[] heights, Holder<Biome>[] biomes, long millis) {
+	record Grid(int samples, int step, int origin, short[] heights, Holder<Biome>[] biomes, long millis) {
 	}
 
 	// disableMobGeneration() is deprecated; it is only passed through to the copy of the settings.
@@ -109,7 +109,14 @@ final class Sampler {
 		WorldPreview.LOG.info("World preview: {} threads of {}", pool.getParallelism(),
 				Runtime.getRuntime().availableProcessors());
 		try {
-			run(out, source, pool, samples, step, origin);
+			Grid full = run(out, source, pool, samples, step, origin);
+			// What comes with the map. The map is already written: trouble here must not lose it.
+			try {
+				Section.write(out, source, full, pool);
+				Ores.write(server, out);
+			} catch (Exception e) {
+				WorldPreview.LOG.error("World preview: no section", e);
+			}
 		} finally {
 			pool.shutdown();
 		}
@@ -125,7 +132,7 @@ final class Sampler {
 		return asked > 0 ? asked : Math.max(1, Runtime.getRuntime().availableProcessors() / 2);
 	}
 
-	private static void run(Path out, Generator source, ForkJoinPool pool, int samples, int step, int origin)
+	private static Grid run(Path out, Generator source, ForkJoinPool pool, int samples, int step, int origin)
 			throws IOException {
 		// A coarse pass covers the same square with a longer step. It leaves the aquifers out: setting
 		// one up looks for the surface level all over the area its columns cover, so its cost follows
@@ -140,7 +147,9 @@ final class Sampler {
 				write(out, "coarse", source, sample(source, pool, samples / coarse, step * coarse, origin, false));
 			}
 		}
-		write(out, "preview", source, sample(source, pool, samples, step, origin, true));
+		Grid full = sample(source, pool, samples, step, origin, true);
+		write(out, "preview", source, full);
+		return full;
 	}
 
 	/**
