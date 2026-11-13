@@ -2396,14 +2396,14 @@
   scheme.addEventListener('change', paint);
 
   // The address can ask for a state, so a capture gets any view without a click:
-  // /?view=height,relief3d&biome=minecraft:desert,minecraft:badlands, or &structure=minecraft:village_plains
+  // /?view=height,relief3d&biome=minecraft:desert,minecraft:badlands, or &structure=minecraft:village_plains,surface
   const asked = new URLSearchParams(location.search);
   for (const id of (asked.get('biome') || '').split(',')) if (id) chosen.biomes.add(id);
   // "surface" and "under" stand for every structure of that part, whatever the pack calls them.
   for (const id of (asked.get('structure') || '').split(',')) {
     const part = { surface: false, under: true }[id], s = world?.structures;
     if (part == null) { if (id) chosen.structures.add(id); }
-    else if (s) s.ids.forEach((kind, i) => { if (s.under[i] === part) chosen.structures.add(kind); });
+    else if (s) s.ids.forEach((kind, i) => { if (s.under[i] === part && s.count[i]) chosen.structures.add(kind); });
   }
   if (world && chosen.biomes.size) { showChoice(); paint(); }
   for (const key of (asked.get('view') || '').split(',')) $('tabs').querySelector(`[data-view="${key}"]`)?.click();
