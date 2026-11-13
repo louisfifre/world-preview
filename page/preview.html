@@ -1621,6 +1621,8 @@
   // What is added under the ground: one row per ore, kept by the browser once changed. Until then the
   // rows are the anchored rules the server loaded, so a pack that already adds such ores shows its own.
   let oreRows = null, withoutAdded = false, cutShown = null;
+  // The line of the last cut shown, kept through a run: the sketches have no cut, and forget cutShown.
+  let keptCut = null;
   try { oreRows = JSON.parse(localStorage.getItem('preview.oreRows')); } catch { }
   const rowsOfMods = section => section.rules.filter(rule => rule.anchored).map(rule => ({ id: rule.id, kind: rule.kind, ...rule.anchored }));
   function keepRows(rows) {
@@ -1970,6 +1972,14 @@
   async function showCut() {
     const section = world?.section;
     if (!section) { cutShown = null; return; }
+    // A new run on the same seed and area often cuts along the same lines. The line that was looked at
+    // is then found again, and the place looked at along it kept: a slider moved to see what it does to
+    // one hill must not send the view back to the cut's first place at every run.
+    if (!section.resumed) {
+      section.resumed = true;
+      const same = keptCut && section.length === keptCut.length ? section.cuts.findIndex(c => c.z === keptCut.z && c.x === keptCut.x) : -1;
+      if (same >= 0) section.at = same;
+    }
     const cut = section.cuts[section.at];
     section.cells[section.at] ??= await fetch(`/preview/data/${cut.file}`).then(r => r.arrayBuffer()).then(b => new Uint8Array(b));
     const cells = section.cells[section.at];
@@ -1978,8 +1988,10 @@
     const ground = section.grounds[section.at] ??= groundOf(section, cells, cut);
     const play = orePlay(section, cells, cut, ground, oreRows ?? rowsOfMods(section));
     const fresh = cutShown?.section !== section || cutShown.cut !== cut;
+    const sameLine = keptCut && keptCut.z === cut.z && keptCut.x === cut.x && keptCut.length === section.length;
     cutShown = { section, cut, cells, ground, play, perChunk: play.perChunk };
-    if (fresh) { cutLook.k = cutLook.x = cutLook.y = 0; drawNav(); }
+    keptCut = { z: cut.z, x: cut.x, length: section.length };
+    if (fresh) { if (!sameLine) cutLook.k = cutLook.x = cutLook.y = 0; drawNav(); }
     showCutLook(); showOres();
     restProbe();
   }
