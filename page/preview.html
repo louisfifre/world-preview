@@ -146,6 +146,7 @@
   }
   .setting small { grid-column: 1 / -1; }
   /* A switch is not a slider: a small frame with a square that sits left when off, right and lit when on.
+     Its frame is the slider's own hairline, grey in both places: only the square says on.
      Underneath it stays a range of two places, so every value of the page is read the same way. */
   .setting.switch input {
     grid-column: auto; grid-row: 1; width: 30px; height: 16px; padding: 2px; align-self: center;
@@ -153,7 +154,6 @@
   }
   .setting.switch input::-webkit-slider-runnable-track { height: 10px; }
   .setting.switch input::-webkit-slider-thumb { width: 10px; height: 10px; background: var(--muted); }
-  .setting.switch input.on { border-color: var(--text); }
   .setting.switch input.on::-webkit-slider-thumb { background: var(--text); }
   .setting.switch input:hover::-webkit-slider-thumb { background: var(--text); }
   /* Its word, on or off, sits before the frame on the same line. */
