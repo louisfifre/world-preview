@@ -432,8 +432,9 @@
     lists: { biomes: ['Biomes', 'biome'], flat: ['Ground', 'ground'], height: ['Heights', 'height'], temperature: ['Temperatures', 'climate'], structures: ['Structures', 'structure'] },
     heightBands: (sea, steps) => ['Under the sea', ...steps.map((top, i) => `${i ? steps[i - 1] : sea} to ${top}`), `Above ${steps.at(-1)}`],
     pickHint: 'Click rows, here or on the map.',
-    // The structures built under the ground step back while nothing is chosen: said where the list starts.
-    pickHintUnder: 'Click rows, here or on the map. Grey dots: built under the ground.',
+    // No structure is drawn until it is chosen: said where the list starts.
+    pickHintMarks: 'Click the rows to draw on the map. None is drawn until then.',
+    pickNoneMarks: 'Draw none',
     pickedMany: count => `${count} chosen`,
     pickedShare: share => ` · ${share} of the area`,
     pickedCount: (count, of) => ` · ${count} of ${of}`,
@@ -486,7 +487,7 @@
     // The structures: where each would start, as the generator places them.
     noStructures: 'No structures for this preview. Generate it again.',
     parts: ['On the surface', 'Under the ground'],
-    partHint: 'Click to show this part alone; again to show all.',
+    partHint: 'Click to draw this whole part; again to draw none.',
     structureProbe: (x, z, name) => `x ${x}   z ${z}   ${name}`,
     // [name, a short note beside it, the definition shown on hover]
     figureNames: {
@@ -1192,6 +1193,10 @@
   // map, so it stays round and crisp from 256 to 2048 points a side, and in 3D, where the canvas is the texture.
   const marksSide = 2048;
   let quiet = null;   // the land under the marks, at the map's own points: { world, dark, land }
+  // Only the kinds chosen in the list are drawn, and none is chosen at first: a wide area holds tens of
+  // thousands of starts, most of them mineshafts, and drawing them all made the map slow to move and
+  // hard to read. An exported picture has no list beside it: it shows what is built on the surface.
+  const drawn = kind => exporting ? !world.structures.under[kind] : chosen.structures.has(world.structures.ids[kind]);
   function drawMarks() {
     const s = world.structures, n = world.samples;
     map.width = map.height = marksSide;
@@ -1203,24 +1208,14 @@
       const far = in3d || exporting, shown = $('flat').clientWidth || $('relief').clientWidth || 700;
       const pixel = marksSide / shown / (far ? 1 : look.k ** 0.8);
       const radius = (far ? 4.5 : 3.5) * pixel, toCanvas = marksSide / (n * world.step);
-      const picked = chosen.structures, choosing = !exporting && s.ids.some(id => picked.has(id));
-      // With nothing chosen, what is built under the ground steps back: there are far more of them, and the
-      // view is opened for what can be seen from the surface. A choice lights what it names, buried or not.
-      const lit = kind => choosing ? picked.has(s.ids[kind]) : !s.under[kind];
-      // What is not lit steps back to a small grey dot: still a place, no longer a kind.
-      const dot = (kind, r) => {
+      // A dark ring keeps a pale mark apart from pale ground, and two touching marks apart from each other.
+      pen.lineWidth = pixel; pen.strokeStyle = 'rgb(0 0 0 / 0.7)';
+      for (const kind of s.order) if (drawn(kind)) {
         pen.beginPath();
         for (const [, x, z] of s.byKind[kind]) {
           const cx = (x - world.originX) * toCanvas, cy = (z - world.originZ) * toCanvas;
-          pen.moveTo(cx + r, cy); pen.arc(cx, cy, r, 0, 2 * Math.PI);
+          pen.moveTo(cx + radius, cy); pen.arc(cx, cy, radius, 0, 2 * Math.PI);
         }
-      };
-      pen.fillStyle = scheme.matches ? '#6a6a6a' : '#8a8a86';
-      for (const kind of s.order) if (!lit(kind)) { dot(kind, radius * 0.45); pen.fill(); }
-      // A dark ring keeps a pale mark apart from pale ground, and two touching marks apart from each other.
-      pen.lineWidth = pixel; pen.strokeStyle = 'rgb(0 0 0 / 0.7)';
-      for (const kind of s.order) if (lit(kind)) {
-        dot(kind, radius);
         pen.fillStyle = css(s.colours[kind]); pen.fill(); pen.stroke();
       }
     }
@@ -1234,7 +1229,7 @@
     const x = world.originX + (event.clientX - box.left) / box.width * span, z = world.originZ + (event.clientY - box.top) / box.height * span;
     // Within about the mark's own radius, a little more.
     let best = null, reach = (6 * span / box.width) ** 2;
-    for (const point of s.points) {
+    for (const kind of s.order) if (drawn(kind)) for (const point of s.byKind[kind]) {
       const d = (point[1] - x) ** 2 + (point[2] - z) ** 2;
       if (d < reach) { reach = d; best = point; }
     }
@@ -1383,9 +1378,10 @@
       head.setAttribute('aria-pressed', picked.size === head.partIds.length && head.partIds.every(id => picked.has(id)));
       head.hidden = !head.partIds.some(id => !$('biomes').querySelector(`[data-id="${CSS.escape(id)}"]`).hidden);
     }
-    if (!rows.length) { $('pick').replaceChildren(view === 'structures' ? text.pickHintUnder : text.pickHint); return; }
+    if (!rows.length) { $('pick').replaceChildren(view === 'structures' ? text.pickHintMarks : text.pickHint); return; }
     const none = document.createElement('button');
-    none.textContent = text.pickNone;
+    // Elsewhere an empty choice shows everything; for the structures it draws nothing.
+    none.textContent = view === 'structures' ? text.pickNoneMarks : text.pickNone;
     none.addEventListener('click', () => { picked.clear(); showChoice(); paint(); });
     none.className = 'none';
     // Up to three, the choice is named, since its rows may be far apart in the list. A name takes its row out.
@@ -1462,7 +1458,8 @@
   // A sketch has no list to mirror the choice: nothing is chosen on it.
   map.addEventListener('click', event => {
     if (carried || !world || world.sketch) return;
-    if (view === 'structures') { const near = structureNear(event); if (near) choose(world.structures.ids[near[0]]); return; }
+    // The structures are chosen in the list only: every mark on the map is already a chosen one.
+    if (view === 'structures') return;
     const list = listOf(view);
     choose(list.ids[list.at[pointUnder(event)[2]]]);
   });
@@ -2390,7 +2387,12 @@
   // /?view=height,relief3d&biome=minecraft:desert,minecraft:badlands, or &structure=minecraft:village_plains
   const asked = new URLSearchParams(location.search);
   for (const id of (asked.get('biome') || '').split(',')) if (id) chosen.biomes.add(id);
-  for (const id of (asked.get('structure') || '').split(',')) if (id) chosen.structures.add(id);
+  // "surface" and "under" stand for every structure of that part, whatever the pack calls them.
+  for (const id of (asked.get('structure') || '').split(',')) {
+    const part = { surface: false, under: true }[id], s = world?.structures;
+    if (part == null) { if (id) chosen.structures.add(id); }
+    else if (s) s.ids.forEach((kind, i) => { if (s.under[i] === part) chosen.structures.add(kind); });
+  }
   if (world && chosen.biomes.size) { showChoice(); paint(); }
   for (const key of (asked.get('view') || '').split(',')) $('tabs').querySelector(`[data-view="${key}"]`)?.click();
   // Tells a capture that everything asked for is drawn (see scripts/capture.ps1).
