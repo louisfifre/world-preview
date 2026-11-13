@@ -284,7 +284,10 @@
     width: 100%; display: grid; grid-template-columns: 12px minmax(0, 1fr) auto auto; gap: 8px; align-items: center;
     padding: 4px 0; text-align: left; font-size: 13px;
   }
-  .biome:hover .name { text-decoration: underline; }
+  button.biome:hover .name { text-decoration: underline; }
+  /* A biome the area does not hold: named, but not a row to choose. */
+  .biome.absent { color: var(--muted); }
+  .biome.absent i { opacity: 0.5; }
   /* The line over a part of the list reads like the heads of the columns: a note, not a title. Pressed, it
      takes the colour of the text, as its part is then shown alone. */
   .part {
@@ -292,7 +295,7 @@
     padding: 12px 0 4px; text-align: left; font-size: 12px; color: var(--muted);
   }
   .part:first-child { padding-top: 2px; }
-  .part:hover span:nth-child(2) { text-decoration: underline; text-underline-offset: 3px; }
+  button.part:hover span:nth-child(2) { text-decoration: underline; text-underline-offset: 3px; }
   .part[aria-pressed=true] { color: var(--text); }
   .part .share { min-width: 6ch; text-align: right; }
   /* The list mirrors the map: the chosen biomes stay lit, the others step back. */
@@ -429,8 +432,9 @@
     lists: { biomes: ['Biomes', 'biome'], flat: ['Ground', 'ground'], height: ['Heights', 'height'], temperature: ['Temperatures', 'climate'], structures: ['Structures', 'structure'] },
     heightBands: (sea, steps) => ['Under the sea', ...steps.map((top, i) => `${i ? steps[i - 1] : sea} to ${top}`), `Above ${steps.at(-1)}`],
     pickHint: 'Click rows, here or on the map.',
-    // The structures built under the ground step back while nothing is chosen: said where the list starts.
-    pickHintUnder: 'Click rows, here or on the map. Grey dots: built under the ground.',
+    // No structure is drawn until it is chosen: said where the list starts.
+    pickHintMarks: 'Click the rows to draw on the map. None is drawn until then.',
+    pickNoneMarks: 'Draw none',
     pickedMany: count => `${count} chosen`,
     pickedShare: share => ` · ${share} of the area`,
     pickedCount: (count, of) => ` · ${count} of ${of}`,
@@ -483,7 +487,7 @@
     // The structures: where each would start, as the generator places them.
     noStructures: 'No structures for this preview. Generate it again.',
     parts: ['On the surface', 'Under the ground'],
-    partHint: 'Click to show this part alone; again to show all.',
+    partHint: 'Click to draw this whole part; again to draw none.',
     structureProbe: (x, z, name) => `x ${x}   z ${z}   ${name}`,
     // [name, a short note beside it, the definition shown on hover]
     figureNames: {
@@ -493,8 +497,11 @@
       ocean:   ['Sea', '', 'Share of the whole area below sea level, rivers and lakes included.'],
       high:    ['High land', '', 'Share of the land higher than 150.'],
       top:     ['Highest peak', '', ''],
-      count:   ['Biomes present', '', ''],
+      count:   ['Biomes present', '', 'Surface biomes met in this area, of all those the generator can place. The others are named at the end of the list of biomes.'],
     },
+    countOf: (count, total) => `${count} of ${total}`,
+    absent: 'Not in this area',
+    absentHint: 'Biomes the generator can place at the surface, that this area does not hold.',
     goalFigures: ['flat', 'expanse', 'typical'],
     altitude: v => `height ${v}`,
     // The section: a cut through the ground, and the ores played on it.
@@ -1043,12 +1050,18 @@
     zones(plain, n, (isPlain, size) => { if (isPlain) { plainCells += size; plainWeighted += size * size; } });
     let landCells = 0, landWeighted = 0;
     meta.biomes.forEach((b, i) => { if (!isWater(b.id)) { landCells += cells[i]; landWeighted += cells[i] * widths[i]; } });
+    // The biomes the generator can place that the area does not hold. Those that live under the ground
+    // only are left out: the map reads the surface, and would call them missing for ever. A preview made
+    // before the mod listed what the generator can place has none, and no total.
+    const met = new Set(meta.biomes.map(b => b.id));
+    const absent = (meta.possible ?? []).filter(b => !b.underground && !met.has(b.id)).map(b => b.id);
     return {
-      cells, widths, flatAt,
+      cells, widths, flatAt, absent,
       figures: {
         ocean: 100 * ocean / total, flat: 100 * flat / land, high: 100 * high / land, top,
         expanse: plainCells ? Math.sqrt(plainWeighted / plainCells) * meta.step : 0,
-        count: meta.biomes.length, typical: landWeighted / landCells,
+        count: meta.biomes.length, total: meta.possible ? meta.biomes.length + absent.length : null,
+        typical: landWeighted / landCells,
         // Two runs compare only over the same area: a wider one holds wider zones.
         span: n * meta.step,
       },
@@ -1180,6 +1193,10 @@
   // map, so it stays round and crisp from 256 to 2048 points a side, and in 3D, where the canvas is the texture.
   const marksSide = 2048;
   let quiet = null;   // the land under the marks, at the map's own points: { world, dark, land }
+  // Only the kinds chosen in the list are drawn, and none is chosen at first: a wide area holds tens of
+  // thousands of starts, most of them mineshafts, and drawing them all made the map slow to move and
+  // hard to read. An exported picture has no list beside it: it shows what is built on the surface.
+  const drawn = kind => exporting ? !world.structures.under[kind] : chosen.structures.has(world.structures.ids[kind]);
   function drawMarks() {
     const s = world.structures, n = world.samples;
     map.width = map.height = marksSide;
@@ -1191,24 +1208,14 @@
       const far = in3d || exporting, shown = $('flat').clientWidth || $('relief').clientWidth || 700;
       const pixel = marksSide / shown / (far ? 1 : look.k ** 0.8);
       const radius = (far ? 4.5 : 3.5) * pixel, toCanvas = marksSide / (n * world.step);
-      const picked = chosen.structures, choosing = !exporting && s.ids.some(id => picked.has(id));
-      // With nothing chosen, what is built under the ground steps back: there are far more of them, and the
-      // view is opened for what can be seen from the surface. A choice lights what it names, buried or not.
-      const lit = kind => choosing ? picked.has(s.ids[kind]) : !s.under[kind];
-      // What is not lit steps back to a small grey dot: still a place, no longer a kind.
-      const dot = (kind, r) => {
+      // A dark ring keeps a pale mark apart from pale ground, and two touching marks apart from each other.
+      pen.lineWidth = pixel; pen.strokeStyle = 'rgb(0 0 0 / 0.7)';
+      for (const kind of s.order) if (drawn(kind)) {
         pen.beginPath();
         for (const [, x, z] of s.byKind[kind]) {
           const cx = (x - world.originX) * toCanvas, cy = (z - world.originZ) * toCanvas;
-          pen.moveTo(cx + r, cy); pen.arc(cx, cy, r, 0, 2 * Math.PI);
+          pen.moveTo(cx + radius, cy); pen.arc(cx, cy, radius, 0, 2 * Math.PI);
         }
-      };
-      pen.fillStyle = scheme.matches ? '#6a6a6a' : '#8a8a86';
-      for (const kind of s.order) if (!lit(kind)) { dot(kind, radius * 0.45); pen.fill(); }
-      // A dark ring keeps a pale mark apart from pale ground, and two touching marks apart from each other.
-      pen.lineWidth = pixel; pen.strokeStyle = 'rgb(0 0 0 / 0.7)';
-      for (const kind of s.order) if (lit(kind)) {
-        dot(kind, radius);
         pen.fillStyle = css(s.colours[kind]); pen.fill(); pen.stroke();
       }
     }
@@ -1222,7 +1229,7 @@
     const x = world.originX + (event.clientX - box.left) / box.width * span, z = world.originZ + (event.clientY - box.top) / box.height * span;
     // Within about the mark's own radius, a little more.
     let best = null, reach = (6 * span / box.width) ** 2;
-    for (const point of s.points) {
+    for (const kind of s.order) if (drawn(kind)) for (const point of s.byKind[kind]) {
       const d = (point[1] - x) ** 2 + (point[2] - z) ** 2;
       if (d < reach) { reach = d; best = point; }
     }
@@ -1231,7 +1238,7 @@
 
   function showFigures() {
     const f = world.figures, b = before && before.span === f.span ? before : null;
-    const format = { ocean: percent, flat: percent, high: percent, top: text.altitude, count: v => `${v}`, typical: blocks, expanse: blocks };
+    const format = { ocean: percent, flat: percent, high: percent, top: text.altitude, count: v => f.total ? text.countOf(v, f.total) : `${v}`, typical: blocks, expanse: blocks };
     // What moved since the run before, counted on the values as they are shown: [rounding step, decimals].
     const grain = { ocean: [0.1, 1], flat: [0.1, 1], high: [0.1, 1], top: [1, 0], count: [1, 0], typical: [50, 0], expanse: [50, 0] };
     const change = key => {
@@ -1259,8 +1266,9 @@
       const label = cell(name, '');
       if (base) { const note = document.createElement('small'); note.textContent = ` ${base}`; label.append(note); }
       if (definition) label.title = definition;
-      const moved = cell(b && b[key] != null ? change(key) : '', goal ? 'before goal-change' : 'before');
-      if (moved.textContent) moved.title = text.was(format[key](b[key]));
+      // The count of biomes is read against all there are: a change beside it was taken for the missing ones.
+      const moved = cell(b && b[key] != null && !(key === 'count' && f.total) ? change(key) : '', goal ? 'before goal-change' : 'before');
+      if (moved.textContent) moved.title = text.was(key === 'count' ? `${b[key]}` : format[key](b[key]));
       rows.push(label, cell(format[key](f[key]), goal ? 'value goal' : 'value'), moved);
     }
     $('figures').replaceChildren(...rows);
@@ -1293,7 +1301,30 @@
       row.addEventListener('click', () => choose(list.ids[i]));
       return row;
     };
-    if (!counted) { $('biomes').replaceChildren(...order.map(makeRow)); showChoice(); return; }
+    if (!counted) {
+      const rows = order.map(makeRow);
+      // After the biomes of the area, those it does not hold: named, since a count alone does not say which.
+      // They are not rows to choose: there is nothing of them to show on the map.
+      if (view === 'biomes' && world.absent?.length) {
+        const head = document.createElement('div');
+        head.className = 'part num';
+        head.innerHTML = '<span></span><span></span><span></span><span class="share"></span>';
+        head.children[1].textContent = text.absent;
+        head.children[3].textContent = num(world.absent.length);
+        head.title = text.absentHint;
+        head.partIds = world.absent;
+        rows.push(head, ...world.absent.map(id => {
+          const row = document.createElement('div');
+          row.className = 'biome num absent';
+          row.dataset.id = row.title = id;
+          row.innerHTML = '<i></i><span class="name"></span>';
+          row.children[0].style.background = css(biomeColour(id));
+          row.children[1].textContent = pretty(id);
+          return row;
+        }));
+      }
+      $('biomes').replaceChildren(...rows); showChoice(); return;
+    }
     // The structures come in two parts, what is built on the surface and what is built under the ground,
     // each under a quiet line of its own that shows the whole part alone.
     const s = world.structures;
@@ -1347,9 +1378,10 @@
       head.setAttribute('aria-pressed', picked.size === head.partIds.length && head.partIds.every(id => picked.has(id)));
       head.hidden = !head.partIds.some(id => !$('biomes').querySelector(`[data-id="${CSS.escape(id)}"]`).hidden);
     }
-    if (!rows.length) { $('pick').replaceChildren(view === 'structures' ? text.pickHintUnder : text.pickHint); return; }
+    if (!rows.length) { $('pick').replaceChildren(view === 'structures' ? text.pickHintMarks : text.pickHint); return; }
     const none = document.createElement('button');
-    none.textContent = text.pickNone;
+    // Elsewhere an empty choice shows everything; for the structures it draws nothing.
+    none.textContent = view === 'structures' ? text.pickNoneMarks : text.pickNone;
     none.addEventListener('click', () => { picked.clear(); showChoice(); paint(); });
     none.className = 'none';
     // Up to three, the choice is named, since its rows may be far apart in the list. A name takes its row out.
@@ -1426,7 +1458,8 @@
   // A sketch has no list to mirror the choice: nothing is chosen on it.
   map.addEventListener('click', event => {
     if (carried || !world || world.sketch) return;
-    if (view === 'structures') { const near = structureNear(event); if (near) choose(world.structures.ids[near[0]]); return; }
+    // The structures are chosen in the list only: every mark on the map is already a chosen one.
+    if (view === 'structures') return;
     const list = listOf(view);
     choose(list.ids[list.at[pointUnder(event)[2]]]);
   });
@@ -1588,6 +1621,8 @@
   // What is added under the ground: one row per ore, kept by the browser once changed. Until then the
   // rows are the anchored rules the server loaded, so a pack that already adds such ores shows its own.
   let oreRows = null, withoutAdded = false, cutShown = null;
+  // The line of the last cut shown, kept through a run: the sketches have no cut, and forget cutShown.
+  let keptCut = null;
   try { oreRows = JSON.parse(localStorage.getItem('preview.oreRows')); } catch { }
   const rowsOfMods = section => section.rules.filter(rule => rule.anchored).map(rule => ({ id: rule.id, kind: rule.kind, ...rule.anchored }));
   function keepRows(rows) {
@@ -1937,6 +1972,14 @@
   async function showCut() {
     const section = world?.section;
     if (!section) { cutShown = null; return; }
+    // A new run on the same seed and area often cuts along the same lines. The line that was looked at
+    // is then found again, and the place looked at along it kept: a slider moved to see what it does to
+    // one hill must not send the view back to the cut's first place at every run.
+    if (!section.resumed) {
+      section.resumed = true;
+      const same = keptCut && section.length === keptCut.length ? section.cuts.findIndex(c => c.z === keptCut.z && c.x === keptCut.x) : -1;
+      if (same >= 0) section.at = same;
+    }
     const cut = section.cuts[section.at];
     section.cells[section.at] ??= await fetch(`/preview/data/${cut.file}`).then(r => r.arrayBuffer()).then(b => new Uint8Array(b));
     const cells = section.cells[section.at];
@@ -1945,8 +1988,10 @@
     const ground = section.grounds[section.at] ??= groundOf(section, cells, cut);
     const play = orePlay(section, cells, cut, ground, oreRows ?? rowsOfMods(section));
     const fresh = cutShown?.section !== section || cutShown.cut !== cut;
+    const sameLine = keptCut && keptCut.z === cut.z && keptCut.x === cut.x && keptCut.length === section.length;
     cutShown = { section, cut, cells, ground, play, perChunk: play.perChunk };
-    if (fresh) { cutLook.k = cutLook.x = cutLook.y = 0; drawNav(); }
+    keptCut = { z: cut.z, x: cut.x, length: section.length };
+    if (fresh) { if (!sameLine) cutLook.k = cutLook.x = cutLook.y = 0; drawNav(); }
     showCutLook(); showOres();
     restProbe();
   }
@@ -2313,7 +2358,7 @@
       const { folder } = await send('export.json', JSON.stringify({
         seed: shown?.seed, blocks: world.samples * world.step, seaLevel: world.seaLevel,
         tectonic: shown?.values, pack: packValues,
-        figures: world.figures, figuresBefore: sameSpan ? before : null, lists,
+        figures: world.figures, figuresBefore: sameSpan ? before : null, lists, biomesAbsent: world.absent,
         ores: cutShown ? { added: oreRows, perChunk: cutShown.perChunk } : null,
       }, null, 2));
       done.push([text.exportData, seconds()]);
@@ -2351,10 +2396,15 @@
   scheme.addEventListener('change', paint);
 
   // The address can ask for a state, so a capture gets any view without a click:
-  // /?view=height,relief3d&biome=minecraft:desert,minecraft:badlands, or &structure=minecraft:village_plains
+  // /?view=height,relief3d&biome=minecraft:desert,minecraft:badlands, or &structure=minecraft:village_plains,surface
   const asked = new URLSearchParams(location.search);
   for (const id of (asked.get('biome') || '').split(',')) if (id) chosen.biomes.add(id);
-  for (const id of (asked.get('structure') || '').split(',')) if (id) chosen.structures.add(id);
+  // "surface" and "under" stand for every structure of that part, whatever the pack calls them.
+  for (const id of (asked.get('structure') || '').split(',')) {
+    const part = { surface: false, under: true }[id], s = world?.structures;
+    if (part == null) { if (id) chosen.structures.add(id); }
+    else if (s) s.ids.forEach((kind, i) => { if (s.under[i] === part && s.count[i]) chosen.structures.add(kind); });
+  }
   if (world && chosen.biomes.size) { showChoice(); paint(); }
   for (const key of (asked.get('view') || '').split(',')) $('tabs').querySelector(`[data-view="${key}"]`)?.click();
   // Tells a capture that everything asked for is drawn (see scripts/capture.ps1).

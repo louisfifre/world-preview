@@ -82,7 +82,7 @@ if (-not $Shots) {
         @{ Name = 'flat';            Path = '/?view=flat' }
         @{ Name = 'relief';          Path = '/?view=height' }
         @{ Name = 'temperature';     Path = '/?view=temperature' }
-        @{ Name = 'structures';      Path = '/?view=structures' }
+        @{ Name = 'structures';      Path = '/?view=structures&structure=surface' }
         @{ Name = 'section';         Path = '/?view=section' }
         @{ Name = '3d';              Path = '/?view=height,relief3d' }
         @{ Name = 'chosen-biomes';   Path = '/?biome=minecraft:desert,minecraft:badlands' }

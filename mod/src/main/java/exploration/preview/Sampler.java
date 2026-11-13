@@ -21,8 +21,11 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import net.minecraft.core.Holder;
 import net.minecraft.core.QuartPos;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.resources.Identifier;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.tags.TagKey;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.biome.BiomeResolver;
 import net.minecraft.world.level.block.state.BlockState;
@@ -66,6 +69,9 @@ final class Sampler {
 	private static final int[] COARSE = {16, 4, 2};
 	/** A coarse pass with fewer points a side than this shows too little to be worth its picture. */
 	private static final int COARSE_MIN = 128;
+	/** The biomes found under the ground only, by the tag the mods share. */
+	private static final TagKey<Biome> UNDERGROUND = TagKey.create(Registries.BIOME,
+			Identifier.fromNamespaceAndPath("c", "is_underground"));
 
 	private Sampler() {
 	}
@@ -264,6 +270,26 @@ final class Sampler {
 	}
 
 	/**
+	 * Every biome the generator's biome source can place, so the page can say which ones the square does
+	 * not hold. The map reads the surface only, and a cave biome can never be met there: each entry says
+	 * whether the biome is tagged as underground ({@code c:is_underground}, the tag Fabric API and the
+	 * mods that add cave biomes fill). Without that tag in the pack, every biome counts as a surface one.
+	 */
+	private static JsonArray possibleBiomes(Generator source) {
+		List<Holder<Biome>> possible = new ArrayList<>(source.generator().getBiomeSource().possibleBiomes());
+		// A set has no order of its own: by name, so two runs write the same file.
+		possible.sort((a, b) -> a.getRegisteredName().compareTo(b.getRegisteredName()));
+		JsonArray list = new JsonArray();
+		for (Holder<Biome> biome : possible) {
+			JsonObject entry = new JsonObject();
+			entry.addProperty("id", biome.getRegisteredName());
+			entry.addProperty("underground", biome.is(UNDERGROUND));
+			list.add(entry);
+		}
+		return list;
+	}
+
+	/**
 	 * Writes one pass as {@code <name>.json}, {@code heights.bin} and {@code biomes.bin}, the two binary
 	 * files prefixed with {@code <name>-<step>-} unless the name is {@code preview}, whose files keep
 	 * their first names.
@@ -305,6 +331,7 @@ final class Sampler {
 			list.add(entry);
 		}
 		json.add("biomes", list);
+		json.add("possible", possibleBiomes(source));
 		json.addProperty("sampleMillis", grid.millis());
 
 		String prefix = name.equals("preview") ? "" : name + "-" + grid.step() + "-";
