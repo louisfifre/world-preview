@@ -35,6 +35,11 @@ Grid points per side. With Step 16, 512 covers 8192 blocks; the page asks for 25
 .PARAMETER Step
 Blocks between two grid points.
 
+.PARAMETER Detail
+Blocks between two points of the map: Step for the full map, or 2 or 4 times Step to stop after that
+sketch, which is then the map. A map stopped there has no cuts and no structures, which cost the same
+whatever the detail, and its heights leave out the aquifers, like every sketch. Step when omitted.
+
 .PARAMETER Out
 Where the result lands, <Dir>\out when omitted. A second caller (the capture script) passes its
 own folder, so it never replaces the preview someone is looking at. The server folder stays shared:
@@ -52,6 +57,7 @@ param(
     [hashtable]$Tectonic = @{},
     [int]$Samples = 512,
     [int]$Step = 16,
+    [int]$Detail,
     [string]$Out,
     [string[]]$Mods
 )
@@ -64,6 +70,9 @@ $Dir = (Resolve-Path $Dir).Path
 if (-not $Out) { $Out = Join-Path $Dir 'out' }
 # The mod writes where it is told, from the server's own folder: a relative path would land in the wrong place.
 $Out = [IO.Path]::GetFullPath($Out)
+if (-not $Detail) { $Detail = $Step }
+# The mod's sketches are one point in 2 and in 4 of the full grid: the map can stop at one of them only.
+if ($Detail -notin $Step, (2 * $Step), (4 * $Step)) { throw "Detail must be $Step, $(2 * $Step) or $(4 * $Step) blocks." }
 
 # Checked first, before anything is downloaded into the folder: without it the server would not start.
 $eula = Join-Path $Dir 'eula.txt'
@@ -163,7 +172,7 @@ Remove-Item (Join-Path $Out 'preview.json'), (Join-Path $Out 'coarse.json'), (Jo
     (Join-Path $Out 'structures.json') -ErrorAction SilentlyContinue
 $watch = [Diagnostics.Stopwatch]::StartNew()
 $null = Invoke-Java $Dir (Join-Path $Dir 'last-run.log') @('-Xmx4G', '-XX:+UseZGC', "-Dworldpreview.out=$Out",
-    "-Dworldpreview.samples=$Samples", "-Dworldpreview.step=$Step", '-jar', $launcher, 'nogui') -Background
+    "-Dworldpreview.samples=$Samples", "-Dworldpreview.step=$Step", "-Dworldpreview.detail=$Detail", '-jar', $launcher, 'nogui') -Background
 
 if (-not (Test-Path (Join-Path $Out 'preview.json'))) {
     throw "The preview server ended without a result. See $(Join-Path $Dir 'last-run.log')"

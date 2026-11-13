@@ -279,7 +279,7 @@ try {
             }
             elseif ($method -eq 'GET' -and $path -eq '/api/preview/run') {
                 $state = if ($Run) {
-                    @{ running = $true; seed = $Run.Seed; samples = $Run.Samples; tectonic = $Run.Tectonic
+                    @{ running = $true; seed = $Run.Seed; samples = $Run.Samples; detail = $Run.Detail; tectonic = $Run.Tectonic
                        seconds = [int]((Get-Date) - $Run.Started).TotalSeconds }
                 } else { @{ running = $false; error = $LastFailure; stopped = $LastStopped } }
                 Send-Reply $context 200 (ConvertTo-Json $state)
@@ -307,6 +307,9 @@ try {
                 # Grid points per side, one every 16 blocks: from 4096 to 32768 blocks across, by steps of 4096.
                 $samples = if ($null -eq $body.samples) { 512 } else { $body.samples -as [int] }
                 if ($samples -lt 256 -or $samples -gt 2048 -or $samples % 256) { $valid = $false }
+                # Blocks between two points of the map: 16 for the full map, 32 or 64 to stop at a sketch.
+                $detail = if ($null -eq $body.detail) { 16 } else { $body.detail -as [int] }
+                if ($detail -notin 16, 32, 64) { $valid = $false }
                 if (-not $valid) { Send-Reply $context 400 }
                 elseif ($Run) { Send-Reply $context 409 (ConvertTo-Json @{ error = 'A preview is already being computed.' }) }
                 else {
@@ -314,14 +317,14 @@ try {
                     Remove-Item (Join-Path $Out 'coarse.json') -ErrorAction SilentlyContinue
                     $shell = [powershell]::Create()
                     $null = $shell.AddScript({
-                        param($script, $pack, $dir, $seed, $tectonic, $samples, $out)
-                        & $script -Pack $pack -Dir $dir -Seed $seed -Tectonic $tectonic -Samples $samples -Out $out *> $null
+                        param($script, $pack, $dir, $seed, $tectonic, $samples, $detail, $out)
+                        & $script -Pack $pack -Dir $dir -Seed $seed -Tectonic $tectonic -Samples $samples -Detail $detail -Out $out *> $null
                     })
-                    foreach ($argument in "$PSScriptRoot\preview.ps1", $Pack, $Dir, $seed, $tectonic, $samples, $Out) {
+                    foreach ($argument in "$PSScriptRoot\preview.ps1", $Pack, $Dir, $seed, $tectonic, $samples, $detail, $Out) {
                         $null = $shell.AddArgument($argument)
                     }
                     $Run = @{ Shell = $shell; Handle = $shell.BeginInvoke(); Context = $context
-                              Seed = $seed; Samples = $samples; Tectonic = $tectonic; Started = Get-Date }
+                              Seed = $seed; Samples = $samples; Detail = $detail; Tectonic = $tectonic; Started = Get-Date }
                     if ($tray) { $tray.Busy = $true }
                 }
             }

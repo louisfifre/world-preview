@@ -167,6 +167,12 @@
   }
   #status.trouble { color: var(--warn); }
   #run { flex: none; display: flex; flex-direction: column; gap: 8px; }
+  /* How fine the map is, beside the button that computes it: each step says the wait it costs here. */
+  #details { flex-wrap: wrap; gap: 0 16px; font-size: 13px; }
+  #details > span { color: var(--muted); }
+  #details button small { margin-left: 5px; color: var(--muted); }
+  /* What the map on screen cannot show, for want of detail: still there, but out of reach. */
+  .choice button:disabled { opacity: 0.35; }
   #controls { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 22px; }
   /* On a short window the seed, the area and the head would leave the groups a sliver: everything above
      the button scrolls as one list instead, the group titles still pinned, and the button and its line stay
@@ -354,6 +360,7 @@
       <div id="settings" class="scroll"></div>
     </div>
     <div id="run">
+      <div id="details" class="choice"></div>
       <div id="status" role="status"></div>
       <button id="generate" data-text="generate"></button>
     </div>
@@ -413,6 +420,10 @@
     spanHint: wait => `Takes about ${wait}.`,
     duration: s => s < 60 ? `${s} s` : `${Math.floor(s / 60)} min${s % 60 ? ` ${s % 60} s` : ''}`,
     generate: 'Generate preview',
+    detail: 'Detail',
+    detailValue: v => `${v} blocks`,
+    detailHint: 'Blocks between two points of the map. A coarser map comes sooner, without the flat land, the structures and the section.',
+    needsFull: 'Needs the 16-block detail: generate the map again at 16 blocks.',
     upToDate: 'The map shows these settings.',
     stop: 'Stop',
     running: (elapsed, about) => `${elapsed} of about ${about}.`,
@@ -420,6 +431,7 @@
       start: 'Starting the game',
       sketch: step => `Sketch, every ${step} blocks`,
       full: 'Full map and figures',
+      last: step => `Map, every ${step} blocks`,
       readable: 'The sketch on the map can be read already.',
     },
     stopped: 'Stopped. The map is the one from before.',
@@ -627,25 +639,35 @@
   let exporting = false;  // pictures are being taken: the map is drawn whole, whatever is chosen
   // Grid points per side, one every 16 blocks whatever the width, so the measures keep their meaning.
   let samples = 512;
-  // Seconds a run takes, about: the server starts, then every point costs the same (measured on
-  // 512, 1024 and 2048 points a side). Four times the area is four times the wait. The cost of a
-  // point is that of the machine: the first guess is the one it was written on (half of 16 threads),
-  // then each finished run gives this machine's own.
-  const startSeconds = 11;
-  let pointSeconds = 80e-6;
-  try { pointSeconds = +localStorage.getItem('preview.pointSeconds') || pointSeconds; } catch { }
-  const about = points => Math.round((startSeconds + points * points * pointSeconds) / 5) * 5;
-  function learnPace(points, seconds) {
+  // Blocks between two points of the map: 16 for the full map, 32 or 64 to stop at a sketch.
+  let detail = 16;
+  const details = [64, 32, 16];
+  // Seconds a run takes, about: the server starts, then every point of the map costs the same at one
+  // detail (measured on 512, 1024 and 2048 points a side). Four times the area is four times the wait.
+  // The cost of a point is that of the machine and of the detail: each finished run gives this machine's
+  // own for its detail. A detail never run yet borrows the full map's, which costs a little more a point.
+  // The start of the game is measured too, as the time the first pass landed less what the mod says
+  // that pass took: counted in the cost of the points, it would weigh as much on a wide area as on a small one.
+  let startSeconds = 11, pace = {};
+  try {
+    startSeconds = +localStorage.getItem('preview.start') || startSeconds;
+    pace = JSON.parse(localStorage.getItem('preview.pace')) || {};
+  } catch { }
+  const paceOf = d => pace[d] ?? pace[16] ?? 80e-6;
+  const pointsOf = (span, d) => span * 16 / d;
+  const about = (span, d = detail) => Math.round((startSeconds + pointsOf(span, d) ** 2 * paceOf(d)) / 5) * 5;
+  function learnPace(span, d, seconds, start) {
+    if (start > 0 && start < seconds) startSeconds = start;
     if (seconds <= startSeconds) return;
-    pointSeconds = (seconds - startSeconds) / (points * points);
-    try { localStorage.setItem('preview.pointSeconds', pointSeconds); } catch { }
+    pace[d] = (seconds - startSeconds) / pointsOf(span, d) ** 2;
+    try { localStorage.setItem('preview.pace', JSON.stringify(pace)); localStorage.setItem('preview.start', startSeconds); } catch { }
   }
 
+  // Whether the settings on screen are those of a map, or of a run: then there is nothing new to compute.
+  const sameAs = made => !!made && made.seed === $('seed').value.trim() && made.samples === samples && made.detail === detail
+    && Object.entries(inputs).every(([key, input]) => Math.abs(input.value - made.values[key]) < 1e-9);
   // The button keeps its name. It is greyed when there is nothing new to compute, and the line
   // above it says why: the map already shows these settings, or a run is under way.
-  // Whether the settings on screen are those of a map, or of a run: then there is nothing new to compute.
-  const sameAs = made => !!made && made.seed === $('seed').value.trim() && made.samples === samples
-    && Object.entries(inputs).every(([key, input]) => Math.abs(input.value - made.values[key]) < 1e-9);
   function showButton() {
     if (busy) {
       // While a run is under way the button stops it, unless a setting moved: then it starts the new
@@ -669,7 +691,20 @@
     area.value = samples;
     $('areaValue').textContent = text.spanValue(num(samples * 16));
     $('areaHint').textContent = text.spanHint(text.duration(about(samples)));
+    showDetails();
     showButton();
+  }
+  // The details in a row, coarsest first, each with the wait it costs on this area.
+  function showDetails() {
+    const label = Object.assign(document.createElement('span'), { textContent: text.detail, title: text.detailHint });
+    $('details').replaceChildren(label, ...details.map(d => {
+      const button = document.createElement('button');
+      button.setAttribute('aria-pressed', d === detail);
+      button.title = text.detailHint;
+      button.append(text.detailValue(d), Object.assign(document.createElement('small'), { textContent: text.duration(about(samples, d)) }));
+      button.addEventListener('click', () => { detail = d; showSpan(); });
+      return button;
+    }));
   }
   area.addEventListener('input', () => { samples = +area.value; showSpan(); });
   area.addEventListener('dblclick', () => { samples = 512; showSpan(); });
@@ -955,10 +990,12 @@
     ]);
     // Put the seed and the sliders back to what this preview was made with.
     const run = await fetch('/preview/data/run.json').then(r => r.ok ? r.json() : null).catch(() => null);
-    samples = meta.samples;
+    // The area is counted in points every 16 blocks, whatever the detail of the map.
+    samples = meta.samples * meta.step / 16;
+    detail = meta.step;
     if (run) {
       $('seed').value = run.seed;
-      shown = { seed: String(run.seed), samples, values: {} };
+      shown = { seed: String(run.seed), samples, detail, values: {} };
       for (const [key, input] of Object.entries(inputs)) {
         input.value = run.tectonic[key] ?? packValues[key];
         shown.values[key] = +input.value;
@@ -1026,7 +1063,7 @@
   }
 
   function measure(meta, heights, biomeAt) {
-    const n = meta.samples, total = n * n, sea = meta.seaLevel;
+    const n = meta.samples, total = n * n, sea = meta.seaLevel, coarse = meta.step > 16;
     const cells = new Float64Array(meta.biomes.length);
     // Sum of (zone area)² per biome: divided by the biome's area, it gives the size of the zone
     // a random point of that biome sits in. Small scattered patches weigh little, as they should.
@@ -1081,12 +1118,15 @@
     return {
       cells, widths, flatAt, absent,
       figures: {
-        ocean: 100 * ocean / total, flat: 100 * flat / land, high: 100 * high / land, top,
-        expanse: plainCells ? Math.sqrt(plainWeighted / plainCells) * meta.step : 0,
+        // Level land is told from one point to the next, 16 blocks away: on a coarser map the same test
+        // would measure something else, so it gives nothing there.
+        ocean: 100 * ocean / total, flat: coarse ? null : 100 * flat / land, high: 100 * high / land, top,
+        expanse: coarse ? null : plainCells ? Math.sqrt(plainWeighted / plainCells) * meta.step : 0,
         count: meta.biomes.length, total: meta.possible ? meta.biomes.length + absent.length : null,
         typical: landWeighted / landCells,
-        // Two runs compare only over the same area: a wider one holds wider zones.
-        span: n * meta.step,
+        // Two runs compare only over the same area, at the same detail: a wider one holds wider zones,
+        // and a coarser one smooths them.
+        span: n * meta.step, step: meta.step,
       },
     };
   }
@@ -1260,7 +1300,7 @@
   }
 
   function showFigures() {
-    const f = world.figures, b = before && before.span === f.span ? before : null;
+    const f = world.figures, b = before && before.span === f.span && (before.step ?? 16) === f.step ? before : null;
     const format = { ocean: percent, flat: percent, high: percent, top: text.altitude, count: v => f.total ? text.countOf(v, f.total) : `${v}`, typical: blocks, expanse: blocks };
     // What moved since the run before, counted on the values as they are shown: [rounding step, decimals].
     const grain = { ocean: [0.1, 1], flat: [0.1, 1], high: [0.1, 1], top: [1, 0], count: [1, 0], typical: [50, 0], expanse: [50, 0] };
@@ -1290,9 +1330,12 @@
       if (base) { const note = document.createElement('small'); note.textContent = ` ${base}`; label.append(note); }
       if (definition) label.title = definition;
       // The count of biomes is read against all there are: a change beside it was taken for the missing ones.
-      const moved = cell(b && b[key] != null && !(key === 'count' && f.total) ? change(key) : '', goal ? 'before goal-change' : 'before');
+      const moved = cell(b && b[key] != null && f[key] != null && !(key === 'count' && f.total) ? change(key) : '', goal ? 'before goal-change' : 'before');
       if (moved.textContent) moved.title = text.was(key === 'count' ? `${b[key]}` : format[key](b[key]));
-      rows.push(label, cell(format[key](f[key]), goal ? 'value goal' : 'value'), moved);
+      // A figure the map's detail cannot give stays in its place, greyed, and says why.
+      const value = cell(f[key] == null ? '—' : format[key](f[key]), (goal ? 'value goal' : 'value') + (f[key] == null ? ' muted' : ''));
+      if (f[key] == null) label.title = value.title = text.needsFull;
+      rows.push(label, value, moved);
     }
     $('figures').replaceChildren(...rows);
   }
@@ -2161,9 +2204,16 @@
   // ---------- tabs: what the map shows on the left, and its shape on the right, flat or draped over the relief.
   // Two choices of the same kind, each with one answer always lit: nothing here is a switch to turn off.
 
+  // The views a map stopped at a coarser detail cannot give: level land is told 16 blocks apart, and the
+  // structures and the cuts come after the full map only.
+  const needsFull = ['flat', 'structures', 'section'];
+  const coarseMap = () => !!world && !world.sketch && world.step > 16;
   function showTabs() {
+    if (coarseMap() && needsFull.includes(view)) { view = 'biomes'; openGroupsFor(view); }
     for (const tab of $('tabs').children) {
       const key = tab.dataset.view;
+      tab.disabled = coarseMap() && needsFull.includes(key);
+      tab.title = tab.disabled ? text.needsFull : '';
       tab.setAttribute('aria-pressed', key in text.shapes ? (key === 'relief3d') === in3d : key === view);
       // A cut has one shape only.
       if (key in text.shapes) tab.hidden = view === 'section';
@@ -2240,12 +2290,13 @@
     $('frame').classList.add('busy');
     const started = Date.now() - already * 1000;
     const seconds =() => Math.round((Date.now() - started) / 1000);
-    const expected = about(samples), wait = text.duration(expected);
+    const expected = about(run.samples, run.detail), wait = text.duration(expected);
+    const last = run.detail > 16 ? text.steps.last(run.detail) : text.steps.full;
     // The game starts, sketches land, each finer than the one before, then the full map. How many
     // sketches depends on the area, so each is listed as it lands. Only these landings are known: within
     // a step, the hairline follows the clock against the wait this machine took last time.
     const done = [];
-    let stage = text.steps.start;
+    let stage = text.steps.start, gameUp = null;
     const share = () => Math.min(0.97, seconds() / expected);
     const tick = () => {
       showSteps(done, stage, share());
@@ -2263,7 +2314,10 @@
       poll = setTimeout(lookForSketch, 1000);
       if (!sketch) return;
       world = sketch;
-      if (stage === text.steps.start) { done.push([stage, seconds()]); stage = text.steps.full; }
+      if (stage === text.steps.start) {
+        done.push([stage, seconds()]); stage = last;
+        gameUp = seconds() - (sketch.sampleMillis ?? 0) / 1000;
+      }
       done.push([text.steps.sketch(sketch.step), seconds()]);
       $('frame').classList.remove('busy');
       $('numbers').classList.add('stale');
@@ -2299,9 +2353,12 @@
     $('numbers').classList.remove('stale');
     $('numbers').inert = false;
     if (finished) {
-      done.push([stage, seconds()]);
+      // A small area at a coarse detail has no sketch before its map: the game's start and the map end together.
+      done.push([stage === text.steps.start ? last : stage, seconds()]);
       said = text.done(text.duration(seconds()));
-      learnPace(samples, seconds()); showSpan(); showWorld();
+      // Without a sketch, the map itself was the first pass to land.
+      learnPace(run.samples, run.detail, seconds(), gameUp ?? seconds() - (world.sampleMillis ?? 0) / 1000);
+      showSpan(); showWorld();
     } else {
       if (stopped) said = text.stopped;
       if (sketched) { if (!world) map.width = map.height = 0; showTabs(); restProbe(); }
@@ -2321,10 +2378,10 @@
     // Shown at once: the field is what the button compares with the run under way.
     $('seed').value = seed;
     follow(async () => {
-      const reply = await fetch('/api/preview', { method: 'POST', body: JSON.stringify({ seed, samples, tectonic }) });
+      const reply = await fetch('/api/preview', { method: 'POST', body: JSON.stringify({ seed, samples, detail, tectonic }) });
       if (!reply.ok) throw new Error(reply.status === 400 ? text.refused : text.failed);
       return reply.json().catch(() => null);
-    }, { seed, samples, values: tectonic });
+    }, { seed, samples, detail, values: tectonic });
   }
   $('generate').addEventListener('click', () => {
     if (exporting) return;
@@ -2362,7 +2419,8 @@
     // The export says where it is in the same place as a run does, and takes the place of its steps.
     const started = Date.now(), seconds = () => Math.round((Date.now() - started) / 1000);
     // A preview without structures has no picture of them to give.
-    const done = [], kinds = Object.keys(text.views).filter(kind => kind !== 'structures' || world.structures);
+    // Nor does a coarser map give its level land.
+    const done = [], kinds = Object.keys(text.views).filter(kind => (kind !== 'structures' || world.structures) && !(kind === 'flat' && coarseMap()));
     const step = async label => {
       showSteps(done, label, done.length / (kinds.length + 1));
       // Drawing a wide map holds the page: let it show the step first.
@@ -2386,7 +2444,7 @@
         done.push([text.exportStep(text.views[kind]), seconds()]);
       }
       // The cut as it was last looked at: a whole cut as long as the area would be a thread, or wider than a picture may be.
-      if (cutShown && cutCanvas.width) await send('section.png', await new Promise(resolve => cutCanvas.toBlob(resolve)));
+      if (world.section && cutShown && cutCanvas.width) await send('section.png', await new Promise(resolve => cutCanvas.toBlob(resolve)));
       await step(text.exportData);
       const sameSpan = before && before.span === world.figures.span;
       const { folder } = await send('export.json', JSON.stringify({
@@ -2433,6 +2491,7 @@
   if (running?.running) {
     $('seed').value = running.seed;
     samples = running.samples;
+    detail = running.detail ?? 16;
     for (const [key, input] of Object.entries(inputs)) { input.value = running.tectonic[key] ?? packValues[key]; input.dispatchEvent(new Event('input')); }
     showSpan();
     follow(async () => {
@@ -2443,7 +2502,7 @@
         if (now.error) throw new Error(text.failed);
         return now;
       }
-    }, { seed: String(running.seed), samples: running.samples, values: Object.fromEntries(Object.entries(inputs).map(([key, input]) => [key, +input.value])) }, running.seconds);
+    }, { seed: String(running.seed), samples: running.samples, detail, values: Object.fromEntries(Object.entries(inputs).map(([key, input]) => [key, +input.value])) }, running.seconds);
   }
   scheme.addEventListener('change', paint);
 
