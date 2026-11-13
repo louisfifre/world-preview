@@ -458,7 +458,7 @@
     points: ' pt',
     // What the list beside the map holds in each view: [its title, the name of its first column].
     lists: { biomes: ['Biomes', 'biome'], flat: ['Ground', 'ground'], height: ['Heights', 'height'], temperature: ['Temperatures', 'climate'], structures: ['Structures', 'structure'] },
-    heightBands: (sea, steps) => ['Under the sea', ...steps.map((top, i) => `${i ? steps[i - 1] : sea} to ${top}`), `Above ${steps.at(-1)}`],
+    heightBands: (sea, steps, depths) => [`Sea, deeper than ${depths.at(-1)}`, ...depths.map((deep, i) => `Sea, ${i ? depths[i - 1] : 0} to ${deep} deep`).reverse(), ...steps.map((top, i) => `${i ? steps[i - 1] : sea} to ${top}`), `Above ${steps.at(-1)}`],
     pickHint: 'Click rows, here or on the map.',
     // No structure is drawn until it is chosen: said where the list starts.
     pickHintMarks: 'Click the rows to draw on the map. None is drawn until then.',
@@ -1055,6 +1055,9 @@
   const chosen = { biomes: new Set(), flat: new Set(), height: new Set(), temperature: new Set(), structures: new Set(), section: new Set() };
   // Where one band of height ends and the next starts, above the sea.
   const heightSteps = [100, 150, 200, 250];
+  // The same under the sea, in blocks of water over the floor: a shelf, an ocean, a deep ocean with
+  // Tectonic's own depths (about 28 and 58 blocks).
+  const seaDepths = [20, 45];
   // The figures of the run before this one. Kept by the browser, so a reload does not lose them.
   let before = null;
   try { before = JSON.parse(localStorage.getItem('preview.before')); } catch { }
@@ -1230,13 +1233,17 @@
     let names, colours;
     if (kind === 'height') {
       for (let i = 0; i < total; i++) {
+        // The rows go up from the deepest floor to the highest ground.
         let band = 0;
-        if (h[i] >= sea) { band = 1; while (band <= heightSteps.length && h[i] >= heightSteps[band - 1]) band++; }
-        at[i] = band;
+        if (h[i] >= sea) while (band < heightSteps.length && h[i] >= heightSteps[band]) band++;
+        else while (band < seaDepths.length && sea - h[i] > seaDepths[band]) band++;
+        at[i] = h[i] >= sea ? seaDepths.length + 1 + band : seaDepths.length - band;
       }
-      names = text.heightBands(sea, heightSteps);
+      names = text.heightBands(sea, heightSteps, seaDepths);
       // Each band takes the colour of its middle.
-      colours = [heightColour(sea - 30, sea), ...[sea, ...heightSteps].map((low, i) => heightColour(i < heightSteps.length ? (low + heightSteps[i]) / 2 : low + 30, sea))];
+      colours = [heightColour(sea - seaDepths.at(-1) - 15, sea),
+        ...seaDepths.map((deep, i) => heightColour(sea - ((i ? seaDepths[i - 1] : 0) + deep) / 2, sea)).reverse(),
+        ...[sea, ...heightSteps].map((low, i) => heightColour(i < heightSteps.length ? (low + heightSteps[i]) / 2 : low + 30, sea))];
     } else if (kind === 'temperature') {
       // Five classes over the game's range, from -0.7 to 2; water apart, as on the map.
       const band = world.biomes.map(b => Math.round(clamp((b.temperature + 0.7) / 2.7, 0, 1) * 4));
@@ -1279,9 +1286,10 @@
     const lit = list ? list.ids.map(id => chosen[view].has(id)) : [], choosing = !exporting && lit.includes(true);
     for (let i = 0; i < total; i++) {
       const biome = at[i], y = h[i], x = i % n, water = y < sea;
-      // Light from the north-west: slopes facing it are brighter. Water stays flat.
+      // Light from the north-west: slopes facing it are brighter. Water stays flat, but in the Relief
+      // view, where the sea floor is ground like the rest.
       let slope = 0;
-      if (!water) {
+      if (!water || view === 'height') {
         const west = x > 0 ? h[i - 1] : y, east = x < n - 1 ? h[i + 1] : y;
         const north = i >= n ? h[i - n] : y, south = i < total - n ? h[i + n] : y;
         slope = (east - west) + (south - north);
@@ -1681,7 +1689,8 @@
       // Half a block under the sea level: ground at that level is land, and must not lie in the sheet of water.
       scene3d.water = new THREE.Mesh(
         new THREE.PlaneGeometry(width, width).rotateX(-Math.PI / 2).translate(0, world.seaLevel - 0.5, 0),
-        new THREE.MeshBasicMaterial({ color: 0x2f5c9e, transparent: true, opacity: 0.6 }));
+        // Clearer over the Relief view, so the floor is read through it.
+        new THREE.MeshBasicMaterial({ color: 0x2f5c9e, transparent: true, opacity: view === 'height' ? 0.25 : 0.6 }));
       scene.add(scene3d.land, scene3d.water);
       if (!scene3d.running) { scene3d.running = true; scene3d.draw(); }
     } catch { $('note').textContent = text.no3d; }

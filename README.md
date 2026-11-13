@@ -31,6 +31,7 @@ It was written while tuning a modpack's terrain, where every try used to mean st
 
 <img src="docs/media/board-relief.png" alt="The biome map draped over the real heights, seen from low above the sea." width="100%">
 
+- **The sea floor too.** The Relief view shades the floor of the sea like the land, and its list counts three depths of water beside the bands of height; in 3D the water is clearer there, so the floor is read through it.
 - **Draped over the real heights.** Any view can be shown in 3D, at true scale: one unit is one block, heights included.
 - **The settings of the view looked at.** The sliders are in groups, and each view opens the groups that move it: the relief for the Relief view, the climate for Temperature. The others stay in the list, closed, and say when they hold a changed value.
 - **Where structures would start.** The Structures view lists every village, outpost, wreck or ruin the generator would start in the area, those of the mods included, with how many there are and how far apart, in two parts: built on the surface, built under the ground. A kind is drawn on the map once its row is clicked, and none at first: a wide area holds tens of thousands of starts, most of them mineshafts (the game starts one in about 250 chunks, so one every 250 blocks or so).
