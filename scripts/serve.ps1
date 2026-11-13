@@ -272,7 +272,9 @@ try {
                 Send-Reply $context 200 ([IO.File]::ReadAllText($Page)) 'text/html'
             }
             elseif ($method -eq 'GET' -and $path -eq '/api/ping') {
-                Send-Reply $context 200
+                # The ping also says when the page file last changed, so an open window takes a new page
+                # by itself. As text: the number is too long for JavaScript to hold exactly.
+                Send-Reply $context 200 "{`"page`":`"$([IO.File]::GetLastWriteTimeUtc($Page).Ticks)`"}"
             }
             elseif ($method -eq 'GET' -and $path -eq '/api/preview/config') {
                 Send-Reply $context 200 (ConvertTo-Json (Get-PackTectonic $Pack) -Depth 4)

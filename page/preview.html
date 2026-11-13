@@ -2611,6 +2611,27 @@
   }
   scheme.addEventListener('change', paint);
 
+  // A page that reloaded itself because its file changed (see the ping below) comes back as it was left:
+  // the values not computed yet, the view, what is chosen, the groups open. Kept for that one reload only,
+  // so a reload by hand starts fresh. A run under way keeps its own seed, area and values.
+  let left = null;
+  try { left = JSON.parse(sessionStorage.getItem('preview.live')); sessionStorage.removeItem('preview.live'); } catch { }
+  if (left) {
+    if (!running?.running) {
+      $('seed').value = left.seed;
+      samples = left.samples;
+      detail = left.detail;
+      for (const [key, input] of Object.entries(inputs)) if (key in left.values) { input.value = left.values[key]; input.dispatchEvent(new Event('input')); }
+      showSpan();
+    }
+    for (const kind in chosen) for (const id of left.chosen[kind] ?? []) chosen[kind].add(id);
+    for (const key of [left.view, left.in3d ? 'relief3d' : 'flat2d']) $('tabs').querySelector(`[data-view="${key}"]`)?.click();
+    if (world && !world.sketch) { showChoice(); paint(); }
+    // After the view, which opens its own groups and moves the list.
+    for (const key in groups) if (key in left.open) openGroup(key, left.open[key]);
+    $('settings').scrollTop = left.scroll;
+  }
+
   // The address can ask for a state, so a capture gets any view without a click:
   // /?view=height,relief3d&biome=minecraft:desert,minecraft:badlands, or &structure=minecraft:village_plains,surface
   const asked = new URLSearchParams(location.search);
@@ -2629,7 +2650,32 @@
   await drawingCut;
   document.documentElement.dataset.ready = '1';
 
-  setInterval(() => fetch('/api/ping').catch(() => say(text.serverGone)), 10000);
+  // The ping keeps the server alive and brings back when the page file last changed. A change seen twice
+  // running is a file whose writing is over: the window then takes the new page, and finds its state again
+  // (above). Not while a name is typed, a pointer is held or pictures are taken: it waits for the next ping.
+  let pageAt = null, pageSeen = null;
+  const leave = () => {
+    const typing = /^(text|number)$/.test(document.activeElement?.type ?? '');
+    if (typing || naming || exporting || carry || cutCarry || navCarry) return;
+    try {
+      sessionStorage.setItem('preview.live', JSON.stringify({
+        seed: $('seed').value, samples, detail, view, in3d, scroll: $('settings').scrollTop,
+        values: Object.fromEntries(Object.entries(inputs).map(([key, input]) => [key, +input.value])),
+        chosen: Object.fromEntries(Object.entries(chosen).map(([kind, ids]) => [kind, [...ids]])),
+        open: Object.fromEntries(Object.entries(groups).map(([key, group]) => [key, group.button.getAttribute('aria-expanded') === 'true'])),
+      }));
+    } catch { }
+    location.reload();
+  };
+  const ping = () => fetch('/api/ping').then(r => r.json()).then(({ page }) => {
+    // A server started before this page knew of it says nothing: then nothing reloads.
+    if (!page) return;
+    pageAt ??= page;
+    if (page !== pageAt && page === pageSeen) leave();
+    pageSeen = page;
+  }).catch(() => say(text.serverGone));
+  ping();
+  setInterval(ping, 2000);
 </script>
 </body>
 </html>
