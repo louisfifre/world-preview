@@ -428,6 +428,7 @@
     upToDate: 'The map shows these settings.',
     stop: 'Stop',
     running: (elapsed, about) => `${elapsed} of about ${about}.`,
+    measuring: elapsed => `${elapsed}. A first run at this detail: its time is kept for the next ones.`,
     steps: {
       start: 'Starting the game',
       sketch: step => `Sketch, every ${step} blocks`,
@@ -643,25 +644,22 @@
   // Blocks between two points of the map: 16 for the full map, 32 or 64 to stop at a sketch.
   let detail = 16;
   const details = [64, 32, 16];
-  // Seconds a run takes, about: the server starts, then every point of the map costs the same at one
-  // detail (measured on 512, 1024 and 2048 points a side). Four times the area is four times the wait.
-  // The cost of a point is that of the machine and of the detail: each finished run gives this machine's
-  // own for its detail. A detail never run yet borrows the full map's, which costs a little more a point.
-  // The start of the game is measured too, as the time the first pass landed less what the mod says
-  // that pass took: counted in the cost of the points, it would weigh as much on a wide area as on a small one.
-  let startSeconds = 11, pace = {};
-  try {
-    startSeconds = +localStorage.getItem('preview.start') || startSeconds;
-    pace = JSON.parse(localStorage.getItem('preview.pace')) || {};
-  } catch { }
-  const paceOf = d => pace[d] ?? pace[16] ?? 80e-6;
-  const pointsOf = (span, d) => span * 16 / d;
-  const about = (span, d = detail) => Math.round((startSeconds + pointsOf(span, d) ** 2 * paceOf(d)) / 5) * 5;
-  function learnPace(span, d, seconds, start) {
-    if (start > 0 && start < seconds) startSeconds = start;
-    if (seconds <= startSeconds) return;
-    pace[d] = (seconds - startSeconds) / pointsOf(span, d) ** 2;
-    try { localStorage.setItem('preview.pace', JSON.stringify(pace)); localStorage.setItem('preview.start', startSeconds); } catch { }
+  // Seconds a run takes, from what this machine measured and nothing before: the first run at a detail
+  // takes the time it takes and is kept. A run is two parts. The game's start and stop do not grow with
+  // the area; the mod's own work, which it writes down (timing.json), grows with it, four times the area
+  // being four times the work. So a run measured on one area tells the wait on another at the same detail.
+  let timing = { fixed: null, work: {} };
+  try { timing = JSON.parse(localStorage.getItem('preview.timing')) || timing; } catch { }
+  const about = (span, d = detail) => {
+    const work = timing.work[d];
+    if (!work || timing.fixed == null) return null;
+    return Math.max(5, Math.round((timing.fixed + work.seconds * (span / work.span) ** 2) / 5) * 5);
+  };
+  function learnPace(span, d, seconds, workSeconds) {
+    if (!(workSeconds >= 0) || workSeconds > seconds) return;
+    timing.fixed = seconds - workSeconds;
+    timing.work[d] = { span, seconds: workSeconds };
+    try { localStorage.setItem('preview.timing', JSON.stringify(timing)); } catch { }
   }
 
   // Whether the settings on screen are those of a map, or of a run: then there is nothing new to compute.
@@ -693,7 +691,8 @@
     area.value = samples;
     if (samples > widest && detail === 16) detail = 32;
     $('areaValue').textContent = text.spanValue(num(samples * 16));
-    $('areaHint').textContent = text.spanHint(text.duration(about(samples))) + (samples > widest ? ` ${text.spanCoarse}` : '');
+    const wait = about(samples);
+    $('areaHint').textContent = [wait == null ? '' : text.spanHint(text.duration(wait)), samples > widest ? text.spanCoarse : ''].filter(Boolean).join(' ');
     showDetails();
     showButton();
   }
@@ -705,7 +704,8 @@
       button.setAttribute('aria-pressed', d === detail);
       button.disabled = d === 16 && samples > widest;
       button.title = button.disabled ? text.spanCoarse : text.detailHint;
-      button.append(text.detailValue(d), Object.assign(document.createElement('small'), { textContent: text.duration(about(samples, d)) }));
+      const wait = about(samples, d);
+      button.append(text.detailValue(d), Object.assign(document.createElement('small'), { textContent: wait == null ? '' : text.duration(wait) }));
       button.addEventListener('click', () => { detail = d; showSpan(); });
       return button;
     }));
@@ -2294,17 +2294,19 @@
     $('frame').classList.add('busy');
     const started = Date.now() - already * 1000;
     const seconds =() => Math.round((Date.now() - started) / 1000);
-    const expected = about(run.samples, run.detail), wait = text.duration(expected);
+    // Nothing to wait against on a first run at this detail: it is being measured.
+    const expected = about(run.samples, run.detail);
     const last = run.detail > 16 ? text.steps.last(run.detail) : text.steps.full;
     // The game starts, sketches land, each finer than the one before, then the full map. How many
     // sketches depends on the area, so each is listed as it lands. Only these landings are known: within
     // a step, the hairline follows the clock against the wait this machine took last time.
     const done = [];
-    let stage = text.steps.start, gameUp = null;
-    const share = () => Math.min(0.97, seconds() / expected);
+    let stage = text.steps.start;
+    const share = () => expected ? Math.min(0.97, seconds() / expected) : 0;
     const tick = () => {
+      const elapsed = text.duration(seconds());
       showSteps(done, stage, share());
-      $('status').textContent = `${text.running(text.duration(seconds()), wait)}${world?.sketch ? ` ${text.steps.readable}` : ''}`;
+      $('status').textContent = `${expected ? text.running(elapsed, text.duration(expected)) : text.measuring(elapsed)}${world?.sketch ? ` ${text.steps.readable}` : ''}`;
     };
     const clock = setInterval(tick, 1000);
     tick();
@@ -2318,10 +2320,7 @@
       poll = setTimeout(lookForSketch, 1000);
       if (!sketch) return;
       world = sketch;
-      if (stage === text.steps.start) {
-        done.push([stage, seconds()]); stage = last;
-        gameUp = seconds() - (sketch.sampleMillis ?? 0) / 1000;
-      }
+      if (stage === text.steps.start) { done.push([stage, seconds()]); stage = last; }
       done.push([text.steps.sketch(sketch.step), seconds()]);
       $('frame').classList.remove('busy');
       $('numbers').classList.add('stale');
@@ -2360,8 +2359,8 @@
       // A small area at a coarse detail has no sketch before its map: the game's start and the map end together.
       done.push([stage === text.steps.start ? last : stage, seconds()]);
       said = text.done(text.duration(seconds()));
-      // Without a sketch, the map itself was the first pass to land.
-      learnPace(run.samples, run.detail, seconds(), gameUp ?? seconds() - (world.sampleMillis ?? 0) / 1000);
+      const work = await fetch('/preview/data/timing.json').then(r => r.ok ? r.json() : null).catch(() => null);
+      learnPace(run.samples, run.detail, seconds(), work ? work.workMillis / 1000 : null);
       showSpan(); showWorld();
     } else {
       if (stopped) said = text.stopped;

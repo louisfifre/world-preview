@@ -114,6 +114,7 @@ final class Sampler {
 		ForkJoinPool pool = new ForkJoinPool(threads());
 		WorldPreview.LOG.info("World preview: {} threads of {}", pool.getParallelism(),
 				Runtime.getRuntime().availableProcessors());
+		long began = System.nanoTime();
 		try {
 			Grid full = run(out, source, pool, samples, step, origin, detail);
 			// A map stopped at a sketch is all that was asked: the cuts and the structures cost the same
@@ -136,6 +137,11 @@ final class Sampler {
 			}
 		} finally {
 			pool.shutdown();
+			// How long the mod's own work took, from the first pass to the last file: what grows with the
+			// area. The page tells it apart from the rest of the wait, the game's start and stop, which does not.
+			JsonObject timing = new JsonObject();
+			timing.addProperty("workMillis", (System.nanoTime() - began) / 1_000_000);
+			Files.writeString(out.resolve("timing.json"), timing.toString());
 		}
 	}
 
