@@ -8,7 +8,7 @@ It was written while tuning a modpack's terrain, where every try used to mean st
 
 > **Personal project.** Windows only, driven by PowerShell scripts.
 
-<img src="docs/media/board-window.png" alt="The preview window: seed, width of the scanned area and the Tectonic settings in groups on the left, the map in the middle, the figures and the list of biomes on the right." width="100%">
+<img src="docs/media/board-window.png" alt="The preview window: the Tectonic settings in groups on the left, under the three tabs that swap them for the seed or the width of the scanned area, the map in the middle, the figures and the list of biomes on the right." width="100%">
 
 - **The real generator, without the world.** A throwaway dedicated server starts with the pack, and a small mod asks the generator two questions on a grid, one point every 16 blocks: how high is the ground, which biome is at the surface. No chunk is generated. Trees and caves are therefore not on the map, and a structure is a point where it would start.
 - **A seed and every Tectonic setting.** Each setting of the pack's [Tectonic](https://modrinth.com/mod/tectonic) config has its control, read from the file itself: a slider for a number, a slider of two places for a switch. They come in groups (biomes and climate, relief, continents with oceans and islands, caves, and what the map does not draw); a setting the page does not know yet still shows, with Tectonic's own comment. They start at the pack's values; a changed one keeps the pack's value beside it. Sets of values can be kept under a name.
