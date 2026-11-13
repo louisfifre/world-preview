@@ -3,7 +3,7 @@ plugins {
 	id 'net.fabricmc.fabric-loom' version "${loom_version}"
 }
 
-version = '0.8.0'
+version = '0.9.0'
 
 base {
 	archivesName = 'world-preview'
