@@ -284,7 +284,10 @@
     width: 100%; display: grid; grid-template-columns: 12px minmax(0, 1fr) auto auto; gap: 8px; align-items: center;
     padding: 4px 0; text-align: left; font-size: 13px;
   }
-  .biome:hover .name { text-decoration: underline; }
+  button.biome:hover .name { text-decoration: underline; }
+  /* A biome the area does not hold: named, but not a row to choose. */
+  .biome.absent { color: var(--muted); }
+  .biome.absent i { opacity: 0.5; }
   /* The line over a part of the list reads like the heads of the columns: a note, not a title. Pressed, it
      takes the colour of the text, as its part is then shown alone. */
   .part {
@@ -292,7 +295,7 @@
     padding: 12px 0 4px; text-align: left; font-size: 12px; color: var(--muted);
   }
   .part:first-child { padding-top: 2px; }
-  .part:hover span:nth-child(2) { text-decoration: underline; text-underline-offset: 3px; }
+  button.part:hover span:nth-child(2) { text-decoration: underline; text-underline-offset: 3px; }
   .part[aria-pressed=true] { color: var(--text); }
   .part .share { min-width: 6ch; text-align: right; }
   /* The list mirrors the map: the chosen biomes stay lit, the others step back. */
@@ -493,8 +496,11 @@
       ocean:   ['Sea', '', 'Share of the whole area below sea level, rivers and lakes included.'],
       high:    ['High land', '', 'Share of the land higher than 150.'],
       top:     ['Highest peak', '', ''],
-      count:   ['Biomes present', '', ''],
+      count:   ['Biomes present', '', 'Surface biomes met in this area, of all those the generator can place. The others are named at the end of the list of biomes.'],
     },
+    countOf: (count, total) => `${count} of ${total}`,
+    absent: 'Not in this area',
+    absentHint: 'Biomes the generator can place at the surface, that this area does not hold.',
     goalFigures: ['flat', 'expanse', 'typical'],
     altitude: v => `height ${v}`,
     // The section: a cut through the ground, and the ores played on it.
@@ -1043,12 +1049,18 @@
     zones(plain, n, (isPlain, size) => { if (isPlain) { plainCells += size; plainWeighted += size * size; } });
     let landCells = 0, landWeighted = 0;
     meta.biomes.forEach((b, i) => { if (!isWater(b.id)) { landCells += cells[i]; landWeighted += cells[i] * widths[i]; } });
+    // The biomes the generator can place that the area does not hold. Those that live under the ground
+    // only are left out: the map reads the surface, and would call them missing for ever. A preview made
+    // before the mod listed what the generator can place has none, and no total.
+    const met = new Set(meta.biomes.map(b => b.id));
+    const absent = (meta.possible ?? []).filter(b => !b.underground && !met.has(b.id)).map(b => b.id);
     return {
-      cells, widths, flatAt,
+      cells, widths, flatAt, absent,
       figures: {
         ocean: 100 * ocean / total, flat: 100 * flat / land, high: 100 * high / land, top,
         expanse: plainCells ? Math.sqrt(plainWeighted / plainCells) * meta.step : 0,
-        count: meta.biomes.length, typical: landWeighted / landCells,
+        count: meta.biomes.length, total: meta.possible ? meta.biomes.length + absent.length : null,
+        typical: landWeighted / landCells,
         // Two runs compare only over the same area: a wider one holds wider zones.
         span: n * meta.step,
       },
@@ -1231,7 +1243,7 @@
 
   function showFigures() {
     const f = world.figures, b = before && before.span === f.span ? before : null;
-    const format = { ocean: percent, flat: percent, high: percent, top: text.altitude, count: v => `${v}`, typical: blocks, expanse: blocks };
+    const format = { ocean: percent, flat: percent, high: percent, top: text.altitude, count: v => f.total ? text.countOf(v, f.total) : `${v}`, typical: blocks, expanse: blocks };
     // What moved since the run before, counted on the values as they are shown: [rounding step, decimals].
     const grain = { ocean: [0.1, 1], flat: [0.1, 1], high: [0.1, 1], top: [1, 0], count: [1, 0], typical: [50, 0], expanse: [50, 0] };
     const change = key => {
@@ -1259,8 +1271,9 @@
       const label = cell(name, '');
       if (base) { const note = document.createElement('small'); note.textContent = ` ${base}`; label.append(note); }
       if (definition) label.title = definition;
-      const moved = cell(b && b[key] != null ? change(key) : '', goal ? 'before goal-change' : 'before');
-      if (moved.textContent) moved.title = text.was(format[key](b[key]));
+      // The count of biomes is read against all there are: a change beside it was taken for the missing ones.
+      const moved = cell(b && b[key] != null && !(key === 'count' && f.total) ? change(key) : '', goal ? 'before goal-change' : 'before');
+      if (moved.textContent) moved.title = text.was(key === 'count' ? `${b[key]}` : format[key](b[key]));
       rows.push(label, cell(format[key](f[key]), goal ? 'value goal' : 'value'), moved);
     }
     $('figures').replaceChildren(...rows);
@@ -1293,7 +1306,30 @@
       row.addEventListener('click', () => choose(list.ids[i]));
       return row;
     };
-    if (!counted) { $('biomes').replaceChildren(...order.map(makeRow)); showChoice(); return; }
+    if (!counted) {
+      const rows = order.map(makeRow);
+      // After the biomes of the area, those it does not hold: named, since a count alone does not say which.
+      // They are not rows to choose: there is nothing of them to show on the map.
+      if (view === 'biomes' && world.absent?.length) {
+        const head = document.createElement('div');
+        head.className = 'part num';
+        head.innerHTML = '<span></span><span></span><span></span><span class="share"></span>';
+        head.children[1].textContent = text.absent;
+        head.children[3].textContent = num(world.absent.length);
+        head.title = text.absentHint;
+        head.partIds = world.absent;
+        rows.push(head, ...world.absent.map(id => {
+          const row = document.createElement('div');
+          row.className = 'biome num absent';
+          row.dataset.id = row.title = id;
+          row.innerHTML = '<i></i><span class="name"></span>';
+          row.children[0].style.background = css(biomeColour(id));
+          row.children[1].textContent = pretty(id);
+          return row;
+        }));
+      }
+      $('biomes').replaceChildren(...rows); showChoice(); return;
+    }
     // The structures come in two parts, what is built on the surface and what is built under the ground,
     // each under a quiet line of its own that shows the whole part alone.
     const s = world.structures;
@@ -2313,7 +2349,7 @@
       const { folder } = await send('export.json', JSON.stringify({
         seed: shown?.seed, blocks: world.samples * world.step, seaLevel: world.seaLevel,
         tectonic: shown?.values, pack: packValues,
-        figures: world.figures, figuresBefore: sameSpan ? before : null, lists,
+        figures: world.figures, figuresBefore: sameSpan ? before : null, lists, biomesAbsent: world.absent,
         ores: cutShown ? { added: oreRows, perChunk: cutShown.perChunk } : null,
       }, null, 2));
       done.push([text.exportData, seconds()]);
