@@ -304,12 +304,15 @@ try {
                     if ($TectonicKeys -notcontains $entry.Name -or $null -eq ($entry.Value -as [double])) { $valid = $false }
                     else { $tectonic[$entry.Name] = [double]$entry.Value }
                 }
-                # Grid points per side, one every 16 blocks: from 4096 to 32768 blocks across, by steps of 4096.
+                # Grid points per side, counted every 16 blocks: from 4096 to 65536 blocks across, by steps of 4096.
                 $samples = if ($null -eq $body.samples) { 512 } else { $body.samples -as [int] }
-                if ($samples -lt 256 -or $samples -gt 2048 -or $samples % 256) { $valid = $false }
+                if ($samples -lt 256 -or $samples -gt 4096 -or $samples % 256) { $valid = $false }
                 # Blocks between two points of the map: 16 for the full map, 32 or 64 to stop at a sketch.
                 $detail = if ($null -eq $body.detail) { 16 } else { $body.detail -as [int] }
                 if ($detail -notin 16, 32, 64) { $valid = $false }
+                # Past 32768 blocks, the full map would hold four times the points of the widest one measured,
+                # and its cuts and structures as much more: the coarser details only.
+                if ($samples -gt 2048 -and $detail -eq 16) { $valid = $false }
                 if (-not $valid) { Send-Reply $context 400 }
                 elseif ($Run) { Send-Reply $context 409 (ConvertTo-Json @{ error = 'A preview is already being computed.' }) }
                 else {

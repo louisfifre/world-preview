@@ -30,7 +30,8 @@ Values that replace those of the pack's config/tectonic.json for this run, by ke
 -Tectonic @{ temperature_scale = 0.1; vertical_scale = 1.2 }
 
 .PARAMETER Samples
-Grid points per side. With Step 16, 512 covers 8192 blocks; the page asks for 256 to 2048.
+Grid points per side. With Step 16, 512 covers 8192 blocks; the page asks for 256 to 4096, past 2048
+at a coarser Detail only.
 
 .PARAMETER Step
 Blocks between two grid points.

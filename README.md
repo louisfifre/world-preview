@@ -85,7 +85,7 @@ The throwaway server works in `run\preview` inside this folder unless `-Dir` nam
 scripts/preview.ps1 -Pack D:\path\to\my-pack -Seed cap-1 -Tectonic @{ vertical_scale = 1.2 }
 ```
 
-The results land in `<Dir>\out`. `-Samples` goes from 256 to 2048 grid points per side (4096 to 32768 blocks).
+The results land in `<Dir>\out`. `-Samples` goes from 256 to 2048 grid points per side (4096 to 32768 blocks), counted every 16 blocks; the page goes to 4096 (65536 blocks) with `-Detail 32` or `64`.
 
 With another work folder (`-Dir`), the EULA is accepted in that folder: the line `eula=true` in `<Dir>\eula.txt`, written by whoever owns the folder. Until then a run stops at once with a sentence saying where the file goes.
 
@@ -99,6 +99,15 @@ Measured on the machine it was written on (2026-11-11, 8 threads used of 16), on
 | 8192 blocks (default) | 12 s | 15 s | 35 s |
 | 16384 blocks | 15 s | 27 s | 1 min 40 s |
 | 32768 blocks | 11 s | 23 s, 1 min 6 s | 5 min 50 s |
+
+A coarser detail, measured on the same machine on 2026-11-13 (seed cap-1):
+
+| Area | A point every 64 blocks | A point every 32 blocks |
+| --- | --- | --- |
+| 8192 blocks | 16 s | 19 s |
+| 65536 blocks | 57 s (125 biomes of 140) | 3 min 26 s (126 of 140) |
+
+Past 32768 blocks the full map is not offered: a coarser detail only.
 
 Another machine has its own pace: the page's "takes about" starts from these figures, then follows the last run made on the machine it is on. With every thread at the normal priority the widest map took 3 min 20 s here, and the machine stalled for seconds at a time meanwhile.
 

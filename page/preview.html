@@ -350,7 +350,7 @@
       </div>
       <div class="setting">
         <h2 data-text="span"></h2><output class="num" id="areaValue" for="area"></output>
-        <input type="range" id="area" min="256" max="2048" step="256">
+        <input type="range" id="area" min="256" max="4096" step="256">
         <small id="areaHint"></small>
       </div>
       <div>
@@ -418,6 +418,7 @@
     span: 'Scanned area',
     spanValue: v => `${v} blocks`,
     spanHint: wait => `Takes about ${wait}.`,
+    spanCoarse: 'Past 32,768 blocks, a point every 32 blocks at the finest.',
     duration: s => s < 60 ? `${s} s` : `${Math.floor(s / 60)} min${s % 60 ? ` ${s % 60} s` : ''}`,
     generate: 'Generate preview',
     detail: 'Detail',
@@ -684,13 +685,15 @@
   }
   const say = sentence => { trouble = sentence; showButton(); };
 
-  // The width is a slider like the others, from 4096 to 32768 blocks. Its value says the wait it costs.
-  const area = $('area');
+  // The width is a slider like the others, from 4096 to 65536 blocks. Its value says the wait it costs.
+  // Past 32768 blocks the full map is out of reach: a coarser detail only, chosen for the person if need be.
+  const area = $('area'), widest = 2048;
   area.style.setProperty('--pack', (512 - area.min) / (area.max - area.min));
   function showSpan() {
     area.value = samples;
+    if (samples > widest && detail === 16) detail = 32;
     $('areaValue').textContent = text.spanValue(num(samples * 16));
-    $('areaHint').textContent = text.spanHint(text.duration(about(samples)));
+    $('areaHint').textContent = text.spanHint(text.duration(about(samples))) + (samples > widest ? ` ${text.spanCoarse}` : '');
     showDetails();
     showButton();
   }
@@ -700,7 +703,8 @@
     $('details').replaceChildren(label, ...details.map(d => {
       const button = document.createElement('button');
       button.setAttribute('aria-pressed', d === detail);
-      button.title = text.detailHint;
+      button.disabled = d === 16 && samples > widest;
+      button.title = button.disabled ? text.spanCoarse : text.detailHint;
       button.append(text.detailValue(d), Object.assign(document.createElement('small'), { textContent: text.duration(about(samples, d)) }));
       button.addEventListener('click', () => { detail = d; showSpan(); });
       return button;
