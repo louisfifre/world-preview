@@ -24,10 +24,13 @@ public final class WorldPreview implements ModInitializer {
 
 		int samples = Integer.getInteger("worldpreview.samples", 512);
 		int step = Integer.getInteger("worldpreview.step", 16);
+		// Blocks between two points of the last pass: the step itself for the full map, or one of the
+		// sketches' steps to stop there.
+		int detail = Integer.getInteger("worldpreview.detail", step);
 
 		ServerLifecycleEvents.SERVER_STARTED.register(server -> {
 			try {
-				Sampler.run(server, Path.of(out), samples, step);
+				Sampler.run(server, Path.of(out), samples, step, detail);
 			} catch (Exception e) {
 				LOG.error("World preview failed", e);
 			} finally {

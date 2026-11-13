@@ -8,11 +8,12 @@ It was written while tuning a modpack's terrain, where every try used to mean st
 
 > **Personal project.** Windows only, driven by PowerShell scripts.
 
-<img src="docs/media/board-window.png" alt="The preview window: seed, width of the scanned area and ten terrain sliders on the left, the map in the middle, the figures and the list of biomes on the right." width="100%">
+<img src="docs/media/board-window.png" alt="The preview window: seed, width of the scanned area and the Tectonic settings in groups on the left, the map in the middle, the figures and the list of biomes on the right." width="100%">
 
 - **The real generator, without the world.** A throwaway dedicated server starts with the pack, and a small mod asks the generator two questions on a grid, one point every 16 blocks: how high is the ground, which biome is at the surface. No chunk is generated. Trees and caves are therefore not on the map, and a structure is a point where it would start.
-- **A seed and twelve sliders.** The sliders are [Tectonic](https://modrinth.com/mod/tectonic)'s values for the size and climate of biomes, the relief, and the continents. They start at the pack's values; a changed one keeps the pack's value beside it. Sets of values can be kept under a name.
-- **Sketches first, then the map.** A coarse sketch takes the map's place while the full map is computed, then finer ones replace it: on the widest area, one point every 256 blocks, then 64, then 32 (see the timings below). The steps of the run are listed under the map, each with the second it ended at, and the button stops the run.
+- **A seed and every Tectonic setting.** Each setting of the pack's [Tectonic](https://modrinth.com/mod/tectonic) config has its control, read from the file itself: a slider for a number, a slider of two places for a switch. They come in groups (biomes and climate, relief, continents with oceans and islands, caves, and what the map does not draw); a setting the page does not know yet still shows, with Tectonic's own comment. They start at the pack's values; a changed one keeps the pack's value beside it. Sets of values can be kept under a name.
+- **Sketches first, then the map.** A coarse sketch takes the map's place while the full map is computed, then finer ones replace it: on the widest area, one point every 256 blocks, then 64, then 32 (see the timings below). The steps of the run are listed under the map, each with the second it ended at, and the button stops the run. A setting moved during a run turns the button back into Generate, which stops that run and starts the new one.
+- **A coarser map, sooner.** Beside the button, the detail: a point every 64, 32 or 16 blocks, each with the wait it costs on this machine. A coarser map stops at that sketch: it comes sooner, and the views and figures it cannot give (flat land, structures, the section) are greyed.
 - **The machine stays usable.** The computation takes half of the processor's threads and runs below the normal priority, so the page and everything else keep answering while it works. It is slower for it, on purpose.
 - **Nothing is written to the pack.** A preview changes the config of its own throwaway server only.
 
@@ -34,7 +35,7 @@ It was written while tuning a modpack's terrain, where every try used to mean st
 - **The settings of the view looked at.** The sliders are in groups, and each view opens the groups that move it: the relief for the Relief view, the climate for Temperature. The others stay in the list, closed, and say when they hold a changed value.
 - **Where structures would start.** The Structures view lists every village, outpost, wreck or ruin the generator would start in the area, those of the mods included, with how many there are and how far apart, in two parts: built on the surface, built under the ground. A kind is drawn on the map once its row is clicked, and none at first: a wide area holds tens of thousands of starts, most of them mineshafts (the game starts one in about 250 chunks, so one every 250 blocks or so).
 - **A cut through the ground, with its ores.** The Section view shows a line across the whole area, from the bottom of the world to its top: a strip of its whole length, and the part chosen on it at true scale, with the generator's own rock, caves, water and lava. The ores are played on it from the rules the server loaded, those of the game and of every mod, and counted near the ground, under low and under high ground. Ores placed at a depth counted from the ground can be added or changed in rows beside the sliders, and the cut follows at once.
-- **A try can be kept.** Export writes a folder under `run\preview\exports`: the settings and the figures in one file, and a picture of each view, flat and in 3D.
+- **A try can be kept.** Export writes a folder under `run\exports`: the settings and the figures in one file, and a picture of each view, flat and in 3D. The page then shows that folder's full path under the map, with a button that opens it.
 
 ## Requirements
 
@@ -78,13 +79,13 @@ scripts/serve.ps1 -Pack D:\path\to\my-game-folder-or-pack
 
 `-Pack` is a game folder or a packwiz pack; it can also come from the environment variable `WORLD_PREVIEW_PACK`. `serve.ps1` opens the page on `http://localhost:25590`. From the repository the mod is built on the first run, which needs a JDK 25 and a few minutes; `scripts/package.ps1` makes the ready-to-use zip, with the mod already built.
 
-The throwaway server works in `run\preview` inside this folder unless `-Dir` names another one. A preview from a shell, without the page:
+The throwaway server works in `run\preview` inside this folder unless `-Dir` names another one; exports go to `run\exports` unless `-Exports` names another one. A preview from a shell, without the page:
 
 ```powershell
 scripts/preview.ps1 -Pack D:\path\to\my-pack -Seed cap-1 -Tectonic @{ vertical_scale = 1.2 }
 ```
 
-The results land in `<Dir>\out`. `-Samples` goes from 256 to 2048 grid points per side (4096 to 32768 blocks).
+The results land in `<Dir>\out`. `-Samples` goes from 256 to 2048 grid points per side (4096 to 32768 blocks), counted every 16 blocks; the page goes to 4096 (65536 blocks) with `-Detail 32` or `64`.
 
 With another work folder (`-Dir`), the EULA is accepted in that folder: the line `eula=true` in `<Dir>\eula.txt`, written by whoever owns the folder. Until then a run stops at once with a sentence saying where the file goes.
 
@@ -99,7 +100,16 @@ Measured on the machine it was written on (2026-11-11, 8 threads used of 16), on
 | 16384 blocks | 15 s | 27 s | 1 min 40 s |
 | 32768 blocks | 11 s | 23 s, 1 min 6 s | 5 min 50 s |
 
-Another machine has its own pace: the page's "takes about" starts from these figures, then follows the last run made on the machine it is on. With every thread at the normal priority the widest map took 3 min 20 s here, and the machine stalled for seconds at a time meanwhile.
+A coarser detail, measured on the same machine on 2026-11-13 (seed cap-1):
+
+| Area | A point every 64 blocks | A point every 32 blocks |
+| --- | --- | --- |
+| 8192 blocks | 16 s | 19 s |
+| 65536 blocks | 57 s (125 biomes of 140) | 3 min 26 s (126 of 140) |
+
+Past 32768 blocks the full map is not offered: a coarser detail only.
+
+Another machine has its own pace: the page shows no wait before a first run at a detail, then the one this machine took, scaled to the area. With every thread at the normal priority the widest map took 3 min 20 s here, and the machine stalled for seconds at a time meanwhile.
 
 Most of the first sketch's wait is the server start. A seed run for the first time took about 10 seconds more, once (22 s to the sketch, 32 s to the map, at 8192 blocks). The first run of all also downloads the game's server, and from the repository builds the mod: a few minutes.
 

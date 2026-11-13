@@ -91,7 +91,7 @@ final class Sampler {
 
 	// disableMobGeneration() is deprecated; it is only passed through to the copy of the settings.
 	@SuppressWarnings("deprecation")
-	static void run(MinecraftServer server, Path out, int samples, int step) throws IOException {
+	static void run(MinecraftServer server, Path out, int samples, int step, int detail) throws IOException {
 		ServerLevel level = server.overworld();
 		ChunkGenerator chunkGenerator = level.getChunkSource().getGenerator();
 		if (!(chunkGenerator instanceof NoiseBasedChunkGenerator generator)) {
@@ -114,8 +114,14 @@ final class Sampler {
 		ForkJoinPool pool = new ForkJoinPool(threads());
 		WorldPreview.LOG.info("World preview: {} threads of {}", pool.getParallelism(),
 				Runtime.getRuntime().availableProcessors());
+		long began = System.nanoTime();
 		try {
-			Grid full = run(out, source, pool, samples, step, origin);
+			Grid full = run(out, source, pool, samples, step, origin, detail);
+			// A map stopped at a sketch is all that was asked: the cuts and the structures cost the same
+			// whatever the detail, and are left for a full map.
+			if (full.step() != step) {
+				return;
+			}
 			// What comes with the map. The map is already written: trouble here must not lose it.
 			try {
 				Section.write(out, source, full, pool);
@@ -131,6 +137,11 @@ final class Sampler {
 			}
 		} finally {
 			pool.shutdown();
+			// How long the mod's own work took, from the first pass to the last file: what grows with the
+			// area. The page tells it apart from the rest of the wait, the game's start and stop, which does not.
+			JsonObject timing = new JsonObject();
+			timing.addProperty("workMillis", (System.nanoTime() - began) / 1_000_000);
+			Files.writeString(out.resolve("timing.json"), timing.toString());
 		}
 	}
 
@@ -144,8 +155,8 @@ final class Sampler {
 		return asked > 0 ? asked : Math.max(1, Runtime.getRuntime().availableProcessors() / 2);
 	}
 
-	private static Grid run(Path out, Generator source, ForkJoinPool pool, int samples, int step, int origin)
-			throws IOException {
+	private static Grid run(Path out, Generator source, ForkJoinPool pool, int samples, int step, int origin,
+			int detail) throws IOException {
 		// A coarse pass covers the same square with a longer step. It leaves the aquifers out: setting
 		// one up looks for the surface level all over the area its columns cover, so its cost follows
 		// the area, not the number of points, and with aquifers a pass of one point in four would cost
@@ -155,7 +166,17 @@ final class Sampler {
 		// sketch is close, not proven exact, and the full pass computes its points again rather than
 		// reusing them.
 		for (int coarse : COARSE) {
-			if (samples % coarse == 0 && samples / coarse >= COARSE_MIN) {
+			if (step * coarse < detail || samples % coarse != 0) {
+				continue;
+			}
+			if (step * coarse == detail) {
+				// The last pass asked for: written as the map itself, whatever its size, and still without
+				// the aquifers, so close but not proven exact like any sketch.
+				Grid last = sample(source, pool, samples / coarse, detail, origin, false);
+				write(out, "preview", source, last);
+				return last;
+			}
+			if (samples / coarse >= COARSE_MIN) {
 				write(out, "coarse", source, sample(source, pool, samples / coarse, step * coarse, origin, false));
 			}
 		}

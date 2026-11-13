@@ -145,6 +145,8 @@
     background: linear-gradient(var(--text), var(--text)) center / 2px 14px no-repeat;
   }
   .setting small { grid-column: 1 / -1; }
+  /* A switch is a slider of two places, off and on: short, so it does not pass for a range. */
+  .setting.switch input { width: 44px; }
   /* The ores under the ground: rows of numbers that show on the cut at once, unlike the sliders. */
   .group .at-once { font-size: 13px; }
   #addedActions { flex-wrap: wrap; gap: 0 16px; }
@@ -167,6 +169,12 @@
   }
   #status.trouble { color: var(--warn); }
   #run { flex: none; display: flex; flex-direction: column; gap: 8px; }
+  /* How fine the map is, beside the button that computes it: each step says the wait it costs here. */
+  #details { flex-wrap: wrap; gap: 0 16px; font-size: 13px; }
+  #details > span { color: var(--muted); }
+  #details button small { margin-left: 5px; color: var(--muted); }
+  /* What the map on screen cannot show, for want of detail: still there, but out of reach. */
+  .choice button:disabled { opacity: 0.35; }
   #controls { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 22px; }
   /* On a short window the seed, the area and the head would leave the groups a sliver: everything above
      the button scrolls as one list instead, the group titles still pinned, and the button and its line stay
@@ -255,6 +263,14 @@
   .step { white-space: nowrap; }
   .step b { display: inline-block; width: 12px; font-weight: 400; }
   .step.now { color: var(--text); }
+  /* Where the last export went, in the steps' place once they are done: a sentence in the status line was
+     missed. It stays until it is closed, or until a run or an export takes the place again. The path can be
+     selected and copied. */
+  .saved { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 16px; font-size: 12px; }
+  .saved .path { flex: 1 1 100%; color: var(--text); user-select: text; overflow-wrap: anywhere; }
+  .saved .path span { color: var(--muted); margin-right: 6px; white-space: nowrap; }
+  .saved button { padding: 0; font-size: 12px; text-decoration: underline; text-underline-offset: 3px; color: var(--muted); }
+  .saved button:hover { color: var(--text); }
   /* The section takes the square's place: the whole cut drawn small, then the part looked at, at true scale. */
   #frame.cut { width: 100cqw; height: calc(100cqh - 40px - var(--under)); aspect-ratio: auto; }
   #cut { position: absolute; inset: 0; display: flex; flex-direction: column; gap: 8px; }
@@ -336,7 +352,7 @@
       </div>
       <div class="setting">
         <h2 data-text="span"></h2><output class="num" id="areaValue" for="area"></output>
-        <input type="range" id="area" min="256" max="2048" step="256">
+        <input type="range" id="area" min="256" max="4096" step="256">
         <small id="areaHint"></small>
       </div>
       <div>
@@ -346,6 +362,7 @@
       <div id="settings" class="scroll"></div>
     </div>
     <div id="run">
+      <div id="details" class="choice"></div>
       <div id="status" role="status"></div>
       <button id="generate" data-text="generate"></button>
     </div>
@@ -403,15 +420,22 @@
     span: 'Scanned area',
     spanValue: v => `${v} blocks`,
     spanHint: wait => `Takes about ${wait}.`,
+    spanCoarse: 'Past 32,768 blocks, a point every 32 blocks at the finest.',
     duration: s => s < 60 ? `${s} s` : `${Math.floor(s / 60)} min${s % 60 ? ` ${s % 60} s` : ''}`,
     generate: 'Generate preview',
+    detail: 'Detail',
+    detailValue: v => `${v} blocks`,
+    detailHint: 'Blocks between two points of the map. A coarser map comes sooner, without the flat land, the structures and the section.',
+    needsFull: 'Needs the 16-block detail: generate the map again at 16 blocks.',
     upToDate: 'The map shows these settings.',
     stop: 'Stop',
     running: (elapsed, about) => `${elapsed} of about ${about}.`,
+    measuring: elapsed => `${elapsed}. A first run at this detail: its time is kept for the next ones.`,
     steps: {
       start: 'Starting the game',
       sketch: step => `Sketch, every ${step} blocks`,
       full: 'Full map and figures',
+      last: step => `Map, every ${step} blocks`,
       readable: 'The sketch on the map can be read already.',
     },
     stopped: 'Stopped. The map is the one from before.',
@@ -420,7 +444,11 @@
     exporting: 'Exporting…',
     exportStep: view => `Pictures: ${view}`,
     exportData: 'Settings and figures',
-    exported: folder => `Exported to ${folder}`,
+    exported: 'Exported.',
+    exportedTo: 'Exported to',
+    openFolder: 'Open the folder',
+    closeNotice: 'Close',
+    openFailed: 'The folder could not be opened: it may have been moved or deleted.',
     exportFailed: 'The export failed.',
     figures: 'In figures',
     change: 'change',
@@ -446,9 +474,11 @@
     colSpacing: 'one every',
     colSpacingHint: 'About how far apart two of them are: the side of the square each has to itself on this area.',
     colCount: 'count',
-    groups: { biomes: 'Biome size and climate', relief: 'Relief', continents: 'Continents and oceans', ores: 'Ores under the ground' },
+    groups: { biomes: 'Biome size and climate', relief: 'Relief', continents: 'Continents, oceans and islands', caves: 'Caves', other: 'Not drawn here', ores: 'Ores under the ground' },
     changed: count => `${count} changed`,
     changedHint: 'Values that differ from the pack’s',
+    on: 'on',
+    off: 'off',
     // Each hint says what changes in the world, in the direction that grows it.
     settings: {
       temperature_scale:      ['Temperature scale', 'Lower: wider warm and cold zones.'],
@@ -458,12 +488,45 @@
       temperature_offset:     ['Temperature offset', 'Higher: a warmer world.'],
       vegetation_offset:      ['Vegetation offset', 'Higher: a wetter world.'],
       vertical_scale:         ['Vertical scale', 'Higher: taller and steeper relief.'],
+      elevation_boost:        ['Elevation boost', 'Higher: mountains and plateaus grow faster than lowlands with the vertical scale.'],
       flat_terrain_skew:      ['Flat against plateaus', 'Higher: more flat land, fewer plateaus.'],
       erosion_scale:          ['Erosion scale', 'Lower: wider massifs, vaster plains.'],
       ridge_scale:            ['Ridge scale', 'Lower: wider rivers, broader valleys.'],
+      rolling_hills:          ['Rolling hills', 'Some plains get very smooth, hilly ground.'],
+      jungle_pillars:         ['Jungle pillars', 'Some jungles get pillars up to a hundred blocks tall.'],
+      ultrasmooth:            ['Ultrasmooth', 'Much smoother ground, at the cost of broken deep oceans and windswept biomes.'],
+      alternate_erosion_scaling: ['Alternate erosion scaling', 'Tectonic’s experimental way of scaling erosion.'],
+      min_y:                  ['Bottom of the world', 'Lower: a deeper world. In steps of 16 blocks.'],
+      max_y:                  ['Top of the world', 'Higher: room for taller relief. In steps of 16 blocks.'],
       continents_scale:       ['Continent scale', 'Lower: larger continents and oceans.'],
-      ocean_offset:           ['Land against ocean', 'Higher: more land, less ocean.'],
+      ocean_offset:           ['Land against ocean', 'Higher: more land, less ocean. Above −0.45 no deep ocean, so no islands.'],
+      alternate_continents_scaling: ['Alternate continents scaling', 'Tectonic’s experimental way of scaling continents.'],
+      ocean_depth:            ['Ocean depth', 'Lower: deeper oceans. −0.5 is 64 blocks under the sea.'],
+      deep_ocean_depth:       ['Deep ocean depth', 'Lower: deeper deep oceans. −0.5 is 64 blocks under the sea.'],
+      enabled:                ['Islands', 'Tectonic’s island land, laid in deep ocean only, more of it the deeper the ocean.'],
+      noise_scale:            ['Island scale', 'Lower: larger islands, further apart.'],
+      noise_multiplier:       ['Island contrast', 'Higher: the island noise swings wider, which raises more of the deep ocean into islands.'],
+      noise_offset:           ['Island amount', 'Higher: the island land rises everywhere in the deep ocean, so more islands.'],
+      cheese_enabled:         ['Cheese caves', 'The large, open caves.'],
+      cheese_additive:        ['Cheese caves size', 'Lower: bigger cheese caves.'],
+      spaghetti_enabled:      ['Spaghetti caves', 'The tunnelling, middle-sized caves.'],
+      noodle_enabled:         ['Noodle caves', 'The narrow caves.'],
+      noodle_additive:        ['Noodle caves size', 'Lower: bigger noodle caves.'],
+      depth_cutoff_start:     ['Caves close to the ground', 'Higher: caves stop deeper under the ground. 0.1 is about 12 blocks.'],
+      depth_cutoff_size:      ['Caves closing', 'Higher: caves close over more blocks.'],
+      lava_tunnels:           ['Lava tunnels', 'Rare, deep tunnels of lava at the bottom of the world.'],
+      underground_rivers:     ['Underground rivers', 'Rivers that reach mountains go on under them.'],
+      carvers_enabled:        ['Old caves and ravines', 'The carvers, which a chunk applies later: not in the section.'],
+      ore_fix:                ['Ore fix', 'Ores at better levels when the bottom of the world is lowered.'],
+      mod_enabled:            ['Tectonic', 'Off: the generator without Tectonic, as a comparison.'],
+      snow_start_offset:      ['Snow start', 'Moves the height where snow starts in cold biomes.'],
+      monument_offset:        ['Ocean monuments', 'Moves ocean monuments down for deeper oceans.'],
+      river_ice:              ['Ice on underground rivers', 'Under snowy biomes.'],
+      river_lanterns:         ['Lanterns over underground rivers', 'Rarely.'],
+      remove_frozen_ocean_ice:['No ice on frozen oceans', 'Makes them as easy to sail as deep frozen oceans.'],
     },
+    unknownSetting: 'A setting of the pack’s Tectonic that this page does not know yet: shown from its name, with Tectonic’s own comment.',
+    duplicateSettings: keys => `Left out, as their names appear twice in the pack’s Tectonic config: ${keys.join(', ')}.`,
     packValue: v => `pack ${v}`,
     resetOne: 'Back to the pack’s value',
     resetHint: 'Click “pack…” beside a value to put it back to the pack’s.',
@@ -544,15 +607,28 @@
   // A width read on a 16-block grid is not known to the block: round it to 50.
   const blocks = v => `${num(Math.round(v / 50) * 50)} blocks`;
 
-  // What each slider may explore. The starting values come from the pack.
-  const ranges = {
-    biomes:     { temperature_scale: [0.03, 0.5, 0.01], vegetation_scale: [0.03, 0.5, 0.01],
-                  temperature_multiplier: [0.5, 1.5, 0.05], vegetation_multiplier: [0.5, 1.5, 0.05],
-                  temperature_offset: [-0.5, 0.5, 0.05], vegetation_offset: [-0.5, 0.5, 0.05] },
-    relief:     { vertical_scale: [0.5, 2, 0.025], flat_terrain_skew: [-0.5, 0.5, 0.05],
-                  erosion_scale: [0.05, 0.5, 0.01], ridge_scale: [0.05, 0.5, 0.01] },
-    continents: { continents_scale: [0.03, 0.3, 0.01], ocean_offset: [-1, -0.2, 0.05] },
+  // Where each setting the page knows goes, and what its slider may explore: [group, min, max, step]. A switch
+  // has no range. The list of settings itself is the pack's Tectonic config, read whole by the server: a
+  // setting this table does not know still gets its slider, in the last group, so none is left out unseen.
+  const known = {
+    temperature_scale: ['biomes', 0.03, 0.5, 0.01], vegetation_scale: ['biomes', 0.03, 0.5, 0.01],
+    temperature_multiplier: ['biomes', 0.5, 1.5, 0.05], vegetation_multiplier: ['biomes', 0.5, 1.5, 0.05],
+    temperature_offset: ['biomes', -0.5, 0.5, 0.05], vegetation_offset: ['biomes', -0.5, 0.5, 0.05],
+    vertical_scale: ['relief', 0.5, 3, 0.025], elevation_boost: ['relief', 0, 1, 0.05],
+    flat_terrain_skew: ['relief', -0.5, 0.5, 0.05], erosion_scale: ['relief', 0.05, 0.5, 0.01], ridge_scale: ['relief', 0.05, 0.5, 0.01],
+    rolling_hills: ['relief'], jungle_pillars: ['relief'], ultrasmooth: ['relief'], alternate_erosion_scaling: ['relief'],
+    min_y: ['relief', -256, 0, 16], max_y: ['relief', 256, 512, 16],
+    continents_scale: ['continents', 0.01, 0.3, 0.01], ocean_offset: ['continents', -1, -0.2, 0.05], alternate_continents_scaling: ['continents'],
+    ocean_depth: ['continents', -1, 0, 0.01], deep_ocean_depth: ['continents', -1, 0, 0.01],
+    enabled: ['continents'], noise_scale: ['continents', 0.02, 0.5, 0.01], noise_multiplier: ['continents', 0, 2, 0.05], noise_offset: ['continents', -1, 1, 0.05],
+    cheese_enabled: ['caves'], cheese_additive: ['caves', -0.5, 1, 0.01], spaghetti_enabled: ['caves'],
+    noodle_enabled: ['caves'], noodle_additive: ['caves', -0.5, 0.5, 0.005],
+    depth_cutoff_start: ['caves', 0, 1, 0.05], depth_cutoff_size: ['caves', 0, 0.5, 0.05],
+    lava_tunnels: ['caves'], underground_rivers: ['caves'], carvers_enabled: ['caves'], ore_fix: ['caves'],
+    mod_enabled: ['relief'], snow_start_offset: ['other', 0, 256, 8], monument_offset: ['other', -64, 0, 1],
+    river_ice: ['other'], river_lanterns: ['other'], remove_frozen_ocean_ice: ['other'],
   };
+  const groupOrder = ['biomes', 'relief', 'continents', 'caves', 'other'];
 
   const $ = id => document.getElementById(id);
 
@@ -604,49 +680,87 @@
 
   // ---------- the settings column ----------
 
-  const packValues = await fetch('/api/preview/config').then(r => r.json());
+  const packConfig = await fetch('/api/preview/config').then(r => r.json());
+  const packSettings = packConfig.settings ?? [];
+  const packValues = Object.fromEntries(packSettings.map(s => [s.key, s.value]));
   const inputs = {};
   let shown = null;       // the seed, span and values the map on screen was made with
   let busy = false;
+  let inRun = null;       // the seed, span and values of the run under way
+  let queued = null;      // the run to start once the one under way has stopped
   let trouble = '';       // what went wrong; it stays until the next attempt
   let said = '';          // how the last run ended, when it did not go wrong
   let exporting = false;  // pictures are being taken: the map is drawn whole, whatever is chosen
   // Grid points per side, one every 16 blocks whatever the width, so the measures keep their meaning.
   let samples = 512;
-  // Seconds a run takes, about: the server starts, then every point costs the same (measured on
-  // 512, 1024 and 2048 points a side). Four times the area is four times the wait. The cost of a
-  // point is that of the machine: the first guess is the one it was written on (half of 16 threads),
-  // then each finished run gives this machine's own.
-  const startSeconds = 11;
-  let pointSeconds = 80e-6;
-  try { pointSeconds = +localStorage.getItem('preview.pointSeconds') || pointSeconds; } catch { }
-  const about = points => Math.round((startSeconds + points * points * pointSeconds) / 5) * 5;
-  function learnPace(points, seconds) {
-    if (seconds <= startSeconds) return;
-    pointSeconds = (seconds - startSeconds) / (points * points);
-    try { localStorage.setItem('preview.pointSeconds', pointSeconds); } catch { }
+  // Blocks between two points of the map: 16 for the full map, 32 or 64 to stop at a sketch.
+  let detail = 16;
+  const details = [64, 32, 16];
+  // Seconds a run takes, from what this machine measured and nothing before: the first run at a detail
+  // takes the time it takes and is kept. A run is two parts. The game's start and stop do not grow with
+  // the area; the mod's own work, which it writes down (timing.json), grows with it, four times the area
+  // being four times the work. So a run measured on one area tells the wait on another at the same detail.
+  let timing = { fixed: null, work: {} };
+  try { timing = JSON.parse(localStorage.getItem('preview.timing')) || timing; } catch { }
+  const about = (span, d = detail) => {
+    const work = timing.work[d];
+    if (!work || timing.fixed == null) return null;
+    return Math.max(5, Math.round((timing.fixed + work.seconds * (span / work.span) ** 2) / 5) * 5);
+  };
+  function learnPace(span, d, seconds, workSeconds) {
+    if (!(workSeconds >= 0) || workSeconds > seconds) return;
+    timing.fixed = seconds - workSeconds;
+    timing.work[d] = { span, seconds: workSeconds };
+    try { localStorage.setItem('preview.timing', JSON.stringify(timing)); } catch { }
   }
 
+  // Whether the settings on screen are those of a map, or of a run: then there is nothing new to compute.
+  const sameAs = made => !!made && made.seed === $('seed').value.trim() && made.samples === samples && made.detail === detail
+    && Object.entries(inputs).every(([key, input]) => Math.abs(input.value - made.values[key]) < 1e-9);
   // The button keeps its name. It is greyed when there is nothing new to compute, and the line
   // above it says why: the map already shows these settings, or a run is under way.
   function showButton() {
-    if (busy) return;
-    const same = !!shown && shown.seed === $('seed').value.trim() && shown.samples === samples
-      && Object.entries(inputs).every(([key, input]) => Math.abs(input.value - shown.values[key]) < 1e-9);
+    if (busy) {
+      // While a run is under way the button stops it, unless a setting moved: then it starts the new
+      // run in its place, the running one cut first, in one press.
+      const again = !sameAs(inRun);
+      $('generate').textContent = again ? text.generate : text.stop;
+      $('generate').classList.toggle('stop', !again);
+      return;
+    }
+    const same = sameAs(shown);
     $('generate').disabled = same;
     $('status').className = trouble ? 'trouble' : '';
     $('status').textContent = trouble || said || (same ? text.upToDate : '');
   }
   const say = sentence => { trouble = sentence; showButton(); };
 
-  // The width is a slider like the others, from 4096 to 32768 blocks. Its value says the wait it costs.
-  const area = $('area');
+  // The width is a slider like the others, from 4096 to 65536 blocks. Its value says the wait it costs.
+  // Past 32768 blocks the full map is out of reach: a coarser detail only, chosen for the person if need be.
+  const area = $('area'), widest = 2048;
   area.style.setProperty('--pack', (512 - area.min) / (area.max - area.min));
   function showSpan() {
     area.value = samples;
+    if (samples > widest && detail === 16) detail = 32;
     $('areaValue').textContent = text.spanValue(num(samples * 16));
-    $('areaHint').textContent = text.spanHint(text.duration(about(samples)));
+    const wait = about(samples);
+    $('areaHint').textContent = [wait == null ? '' : text.spanHint(text.duration(wait)), samples > widest ? text.spanCoarse : ''].filter(Boolean).join(' ');
+    showDetails();
     showButton();
+  }
+  // The details in a row, coarsest first, each with the wait it costs on this area.
+  function showDetails() {
+    const label = Object.assign(document.createElement('span'), { textContent: text.detail, title: text.detailHint });
+    $('details').replaceChildren(label, ...details.map(d => {
+      const button = document.createElement('button');
+      button.setAttribute('aria-pressed', d === detail);
+      button.disabled = d === 16 && samples > widest;
+      button.title = button.disabled ? text.spanCoarse : text.detailHint;
+      const wait = about(samples, d);
+      button.append(text.detailValue(d), Object.assign(document.createElement('small'), { textContent: wait == null ? '' : text.duration(wait) }));
+      button.addEventListener('click', () => { detail = d; showSpan(); });
+      return button;
+    }));
   }
   area.addEventListener('input', () => { samples = +area.value; showSpan(); });
   area.addEventListener('dblclick', () => { samples = 512; showSpan(); });
@@ -700,7 +814,7 @@
   // closes the others; what is opened or closed by hand holds until the view changes. No group is ever
   // left out of the list, and its title row counts its changed values, so nothing changed is out of sight.
   const opensFor = { biomes: ['biomes', 'continents'], flat: ['relief'], height: ['relief', 'continents'],
-                     temperature: ['biomes'], structures: ['biomes'], section: ['ores', 'relief'] };
+                     temperature: ['biomes'], structures: ['biomes'], section: ['ores', 'caves', 'relief'] };
   const groups = {};
   function makeGroup(key) {
     const box = document.createElement('section');
@@ -743,30 +857,45 @@
     groups[key].note.textContent = count ? text.changed(count) : '';
     groups[key].note.title = count ? text.changedHint : '';
   }
-  const changedIn = group => Object.keys(ranges[group]).filter(key => inputs[key] && Math.abs(inputs[key].value - packValues[key]) > 1e-9).length;
+  const groupOf = {};
+  const changedIn = group => Object.keys(inputs).filter(key => groupOf[key] === group && Math.abs(inputs[key].value - packValues[key]) > 1e-9).length;
 
-  for (const [group, keys] of Object.entries(ranges)) {
-    const body = makeGroup(group);
-    for (const [key, [min, max, step]] of Object.entries(keys)) {
-      const [label, hint] = text.settings[key];
-      const digits = step < 0.01 ? 3 : 2;
+  // Every setting of the pack's file, in the order the table above gives, then those it does not know.
+  const sorted = [...packSettings].sort((a, b) => {
+    const rank = s => known[s.key] ? Object.keys(known).indexOf(s.key) : Infinity;
+    return rank(a) - rank(b);
+  });
+  for (const group of groupOrder) makeGroup(group);
+  for (const { key, kind, hint: fileHint } of sorted) {
+    const value = packValues[key];
+    // A setting the page does not know: its range is drawn around the pack's value, a whole number keeping whole steps.
+    const reach = Math.max(1, Math.abs(value)), whole = Number.isInteger(value) && Math.abs(value) >= 2;
+    const [group, min, max, step] = kind === 'switch' ? [known[key]?.[0] ?? 'other', 0, 1, 1]
+      : known[key] ?? ['other', value - reach, value + reach, whole ? 1 : reach / 100];
+    groupOf[key] = group;
+    const [label, hint] = text.settings[key] ?? [key.replace(/_/g, ' ').replace(/^./, c => c.toUpperCase()), fileHint || ''];
+    {
+      const body = groups[group].body;
+      const digits = kind === 'switch' ? 0 : step < 0.01 ? 3 : step >= 1 ? 0 : 2;
+      const asText = v => kind === 'switch' ? (+v ? text.on : text.off) : num(+v, digits);
       const row = document.createElement('div');
-      row.className = 'setting';
+      row.className = 'setting' + (kind === 'switch' ? ' switch' : '');
       row.innerHTML = `<label for="${key}"></label><output class="num" for="${key}"></output>
         <input type="range" id="${key}" min="${min}" max="${max}" step="${step}"><small></small>`;
       row.querySelector('label').textContent = label;
       row.querySelector('small').textContent = hint;
+      if (!known[key]) row.title = text.unknownSetting;
       const input = row.querySelector('input');
       const output = row.querySelector('output');
-      input.value = packValues[key];
-      input.style.setProperty('--pack', (packValues[key] - min) / (max - min));
+      input.value = value;
+      input.style.setProperty('--pack', (value - min) / (max - min));
       const show = () => {
         const changed = Math.abs(input.value - packValues[key]) > 1e-9;
         // A changed value keeps the pack's value beside it, to know how far it went.
-        output.replaceChildren(num(+input.value, digits));
+        output.replaceChildren(asText(input.value));
         if (changed) {
           const pack = document.createElement('span');
-          pack.textContent = text.packValue(num(packValues[key], digits));
+          pack.textContent = text.packValue(asText(packValues[key]));
           pack.title = text.resetOne;
           pack.addEventListener('click', () => { input.value = packValues[key]; show(); });
           output.prepend(pack);
@@ -781,6 +910,13 @@
       body.append(row);
       show();
     }
+  }
+  // A group the pack gives nothing to stays out of the list.
+  for (const group of groupOrder) groups[group].box.hidden = !Object.values(groupOf).includes(group);
+  if (packConfig.duplicates?.length) {
+    const note = Object.assign(document.createElement('small'), { textContent: text.duplicateSettings(packConfig.duplicates) });
+    groups.other.box.hidden = false;
+    groups.other.body.prepend(note);
   }
   // The ores under the ground: rows that the section plays at once. The group is there when the preview has a section.
   {
@@ -932,10 +1068,12 @@
     ]);
     // Put the seed and the sliders back to what this preview was made with.
     const run = await fetch('/preview/data/run.json').then(r => r.ok ? r.json() : null).catch(() => null);
-    samples = meta.samples;
+    // The area is counted in points every 16 blocks, whatever the detail of the map.
+    samples = meta.samples * meta.step / 16;
+    detail = meta.step;
     if (run) {
       $('seed').value = run.seed;
-      shown = { seed: String(run.seed), samples, values: {} };
+      shown = { seed: String(run.seed), samples, detail, values: {} };
       for (const [key, input] of Object.entries(inputs)) {
         input.value = run.tectonic[key] ?? packValues[key];
         shown.values[key] = +input.value;
@@ -1003,7 +1141,7 @@
   }
 
   function measure(meta, heights, biomeAt) {
-    const n = meta.samples, total = n * n, sea = meta.seaLevel;
+    const n = meta.samples, total = n * n, sea = meta.seaLevel, coarse = meta.step > 16;
     const cells = new Float64Array(meta.biomes.length);
     // Sum of (zone area)² per biome: divided by the biome's area, it gives the size of the zone
     // a random point of that biome sits in. Small scattered patches weigh little, as they should.
@@ -1058,12 +1196,15 @@
     return {
       cells, widths, flatAt, absent,
       figures: {
-        ocean: 100 * ocean / total, flat: 100 * flat / land, high: 100 * high / land, top,
-        expanse: plainCells ? Math.sqrt(plainWeighted / plainCells) * meta.step : 0,
+        // Level land is told from one point to the next, 16 blocks away: on a coarser map the same test
+        // would measure something else, so it gives nothing there.
+        ocean: 100 * ocean / total, flat: coarse ? null : 100 * flat / land, high: 100 * high / land, top,
+        expanse: coarse ? null : plainCells ? Math.sqrt(plainWeighted / plainCells) * meta.step : 0,
         count: meta.biomes.length, total: meta.possible ? meta.biomes.length + absent.length : null,
         typical: landWeighted / landCells,
-        // Two runs compare only over the same area: a wider one holds wider zones.
-        span: n * meta.step,
+        // Two runs compare only over the same area, at the same detail: a wider one holds wider zones,
+        // and a coarser one smooths them.
+        span: n * meta.step, step: meta.step,
       },
     };
   }
@@ -1237,7 +1378,7 @@
   }
 
   function showFigures() {
-    const f = world.figures, b = before && before.span === f.span ? before : null;
+    const f = world.figures, b = before && before.span === f.span && (before.step ?? 16) === f.step ? before : null;
     const format = { ocean: percent, flat: percent, high: percent, top: text.altitude, count: v => f.total ? text.countOf(v, f.total) : `${v}`, typical: blocks, expanse: blocks };
     // What moved since the run before, counted on the values as they are shown: [rounding step, decimals].
     const grain = { ocean: [0.1, 1], flat: [0.1, 1], high: [0.1, 1], top: [1, 0], count: [1, 0], typical: [50, 0], expanse: [50, 0] };
@@ -1267,9 +1408,12 @@
       if (base) { const note = document.createElement('small'); note.textContent = ` ${base}`; label.append(note); }
       if (definition) label.title = definition;
       // The count of biomes is read against all there are: a change beside it was taken for the missing ones.
-      const moved = cell(b && b[key] != null && !(key === 'count' && f.total) ? change(key) : '', goal ? 'before goal-change' : 'before');
+      const moved = cell(b && b[key] != null && f[key] != null && !(key === 'count' && f.total) ? change(key) : '', goal ? 'before goal-change' : 'before');
       if (moved.textContent) moved.title = text.was(key === 'count' ? `${b[key]}` : format[key](b[key]));
-      rows.push(label, cell(format[key](f[key]), goal ? 'value goal' : 'value'), moved);
+      // A figure the map's detail cannot give stays in its place, greyed, and says why.
+      const value = cell(f[key] == null ? '—' : format[key](f[key]), (goal ? 'value goal' : 'value') + (f[key] == null ? ' muted' : ''));
+      if (f[key] == null) label.title = value.title = text.needsFull;
+      rows.push(label, value, moved);
     }
     $('figures').replaceChildren(...rows);
   }
@@ -2138,9 +2282,16 @@
   // ---------- tabs: what the map shows on the left, and its shape on the right, flat or draped over the relief.
   // Two choices of the same kind, each with one answer always lit: nothing here is a switch to turn off.
 
+  // The views a map stopped at a coarser detail cannot give: level land is told 16 blocks apart, and the
+  // structures and the cuts come after the full map only.
+  const needsFull = ['flat', 'structures', 'section'];
+  const coarseMap = () => !!world && !world.sketch && world.step > 16;
   function showTabs() {
+    if (coarseMap() && needsFull.includes(view)) { view = 'biomes'; openGroupsFor(view); }
     for (const tab of $('tabs').children) {
       const key = tab.dataset.view;
+      tab.disabled = coarseMap() && needsFull.includes(key);
+      tab.title = tab.disabled ? text.needsFull : '';
       tab.setAttribute('aria-pressed', key in text.shapes ? (key === 'relief3d') === in3d : key === view);
       // A cut has one shape only.
       if (key in text.shapes) tab.hidden = view === 'section';
@@ -2205,28 +2356,31 @@
   // Waits for a run with the page: the steps, the sketches, then the map or the trouble. `ended` resolves
   // when the run is over, with `stopped` if someone stopped it, and throws what went wrong. The run is
   // either the one this page asks for, or one found under way on opening, `already` seconds old.
-  async function follow(ended, already = 0) {
+  async function follow(ended, run, already = 0) {
     trouble = said = '';
     busy = true;
-    // While the run is under way, the button stops it.
+    inRun = run;
+    // While the run is under way, the button stops it, or starts another in its place.
     $('generate').disabled = false;
-    $('generate').textContent = text.stop;
-    $('generate').classList.add('stop');
+    showButton();
     $('status').className = '';
     // The map on screen is about to be replaced: it steps back while the new one is computed.
     $('frame').classList.add('busy');
     const started = Date.now() - already * 1000;
     const seconds =() => Math.round((Date.now() - started) / 1000);
-    const expected = about(samples), wait = text.duration(expected);
+    // Nothing to wait against on a first run at this detail: it is being measured.
+    const expected = about(run.samples, run.detail);
+    const last = run.detail > 16 ? text.steps.last(run.detail) : text.steps.full;
     // The game starts, sketches land, each finer than the one before, then the full map. How many
     // sketches depends on the area, so each is listed as it lands. Only these landings are known: within
     // a step, the hairline follows the clock against the wait this machine took last time.
     const done = [];
     let stage = text.steps.start;
-    const share = () => Math.min(0.97, seconds() / expected);
+    const share = () => expected ? Math.min(0.97, seconds() / expected) : 0;
     const tick = () => {
+      const elapsed = text.duration(seconds());
       showSteps(done, stage, share());
-      $('status').textContent = `${text.running(text.duration(seconds()), wait)}${world?.sketch ? ` ${text.steps.readable}` : ''}`;
+      $('status').textContent = `${expected ? text.running(elapsed, text.duration(expected)) : text.measuring(elapsed)}${world?.sketch ? ` ${text.steps.readable}` : ''}`;
     };
     const clock = setInterval(tick, 1000);
     tick();
@@ -2240,7 +2394,7 @@
       poll = setTimeout(lookForSketch, 1000);
       if (!sketch) return;
       world = sketch;
-      if (stage === text.steps.start) { done.push([stage, seconds()]); stage = text.steps.full; }
+      if (stage === text.steps.start) { done.push([stage, seconds()]); stage = last; }
       done.push([text.steps.sketch(sketch.step), seconds()]);
       $('frame').classList.remove('busy');
       $('numbers').classList.add('stale');
@@ -2276,34 +2430,47 @@
     $('numbers').classList.remove('stale');
     $('numbers').inert = false;
     if (finished) {
-      done.push([stage, seconds()]);
+      // A small area at a coarse detail has no sketch before its map: the game's start and the map end together.
+      done.push([stage === text.steps.start ? last : stage, seconds()]);
       said = text.done(text.duration(seconds()));
-      learnPace(samples, seconds()); showSpan(); showWorld();
+      const work = await fetch('/preview/data/timing.json').then(r => r.ok ? r.json() : null).catch(() => null);
+      learnPace(run.samples, run.detail, seconds(), work ? work.workMillis / 1000 : null);
+      showSpan(); showWorld();
     } else {
       if (stopped) said = text.stopped;
       if (sketched) { if (!world) map.width = map.height = 0; showTabs(); restProbe(); }
     }
     // The steps stay, to see where the time went; the one that did not end is left out.
     showSteps(done, '', finished ? 1 : share());
+    inRun = null;
     showButton();
+    // A run asked for while this one was under way starts now that it has stopped.
+    if (queued) { const next = queued; queued = null; next(); }
   }
 
+  function generate() {
+    const tectonic = Object.fromEntries(Object.entries(inputs).map(([key, input]) => [key, +input.value]));
+    // An empty seed is one drawn here, so the run can be named and done again.
+    const seed = $('seed').value.trim() || String(crypto.getRandomValues(new Uint32Array(1))[0] * 2 ** 20 + crypto.getRandomValues(new Uint32Array(1))[0] % 2 ** 20);
+    // Shown at once: the field is what the button compares with the run under way.
+    $('seed').value = seed;
+    follow(async () => {
+      const reply = await fetch('/api/preview', { method: 'POST', body: JSON.stringify({ seed, samples, detail, tectonic }) });
+      if (!reply.ok) throw new Error(reply.status === 400 ? text.refused : text.failed);
+      return reply.json().catch(() => null);
+    }, { seed, samples, detail, values: tectonic });
+  }
   $('generate').addEventListener('click', () => {
     if (exporting) return;
     if (busy) {
+      // A setting moved: the new run waits for this one to stop, then starts by itself.
+      if (!sameAs(inRun)) queued = generate;
       // One press is enough: the run ends a moment later, and the wait for it says so.
       $('generate').disabled = true;
       fetch('/api/preview/stop', { method: 'POST' }).catch(() => { });
       return;
     }
-    const tectonic = Object.fromEntries(Object.entries(inputs).map(([key, input]) => [key, +input.value]));
-    // An empty seed is one drawn here, so the run can be named and done again.
-    const seed = $('seed').value.trim() || String(crypto.getRandomValues(new Uint32Array(1))[0] * 2 ** 20 + crypto.getRandomValues(new Uint32Array(1))[0] % 2 ** 20);
-    follow(async () => {
-      const reply = await fetch('/api/preview', { method: 'POST', body: JSON.stringify({ seed, samples, tectonic }) });
-      if (!reply.ok) throw new Error(reply.status === 400 ? text.refused : text.failed);
-      return reply.json().catch(() => null);
-    });
+    generate();
   });
 
   // ---------- export ----------
@@ -2329,12 +2496,14 @@
     // The export says where it is in the same place as a run does, and takes the place of its steps.
     const started = Date.now(), seconds = () => Math.round((Date.now() - started) / 1000);
     // A preview without structures has no picture of them to give.
-    const done = [], kinds = Object.keys(text.views).filter(kind => kind !== 'structures' || world.structures);
+    // Nor does a coarser map give its level land.
+    const done = [], kinds = Object.keys(text.views).filter(kind => (kind !== 'structures' || world.structures) && !(kind === 'flat' && coarseMap()));
     const step = async label => {
       showSteps(done, label, done.length / (kinds.length + 1));
       // Drawing a wide map holds the page: let it show the step first.
       await new Promise(resolve => setTimeout(resolve, 30));
     };
+    let saved = '';
     try {
       const total = world.samples ** 2, lists = {};
       for (const kind of kinds) {
@@ -2352,7 +2521,7 @@
         done.push([text.exportStep(text.views[kind]), seconds()]);
       }
       // The cut as it was last looked at: a whole cut as long as the area would be a thread, or wider than a picture may be.
-      if (cutShown && cutCanvas.width) await send('section.png', await new Promise(resolve => cutCanvas.toBlob(resolve)));
+      if (world.section && cutShown && cutCanvas.width) await send('section.png', await new Promise(resolve => cutCanvas.toBlob(resolve)));
       await step(text.exportData);
       const sameSpan = before && before.span === world.figures.span;
       const { folder } = await send('export.json', JSON.stringify({
@@ -2362,14 +2531,32 @@
         ores: cutShown ? { added: oreRows, perChunk: cutShown.perChunk } : null,
       }, null, 2));
       done.push([text.exportData, seconds()]);
-      said = text.exported(folder);
+      said = text.exported;
+      saved = folder;
     } catch (e) { trouble = e.message || text.exportFailed; }
     view = was;
     exporting = false;
     paint();
-    showSteps(done, '', done.length / (kinds.length + 1));
+    if (saved) showSaved(name, saved); else showSteps(done, '', done.length / (kinds.length + 1));
     showButton();
   });
+
+  // Where an export went, under the map, until it is closed. The page cannot open a folder itself: the
+  // server does, and only that export's own folder.
+  function showSaved(name, folder) {
+    const notice = document.createElement('div'), path = document.createElement('div');
+    notice.className = 'saved';
+    path.className = 'path';
+    path.append(Object.assign(document.createElement('span'), { textContent: text.exportedTo }), folder);
+    const button = (label, act) => Object.assign(document.createElement('button'), { textContent: label, onclick: act });
+    notice.append(path,
+      button(text.openFolder, async () => {
+        const reply = await fetch(`/api/preview/export/${encodeURIComponent(name)}/open`, { method: 'POST' }).catch(() => null);
+        if (!reply?.ok) say(text.openFailed);
+      }),
+      button(text.closeNotice, () => $('steps').replaceChildren()));
+    $('steps').replaceChildren(notice);
+  }
   world = await loadWorld();
   if (world) showWorld(); else showTabs();
   showButton();
@@ -2381,6 +2568,7 @@
   if (running?.running) {
     $('seed').value = running.seed;
     samples = running.samples;
+    detail = running.detail ?? 16;
     for (const [key, input] of Object.entries(inputs)) { input.value = running.tectonic[key] ?? packValues[key]; input.dispatchEvent(new Event('input')); }
     showSpan();
     follow(async () => {
@@ -2391,7 +2579,7 @@
         if (now.error) throw new Error(text.failed);
         return now;
       }
-    }, running.seconds);
+    }, { seed: String(running.seed), samples: running.samples, detail, values: Object.fromEntries(Object.entries(inputs).map(([key, input]) => [key, +input.value])) }, running.seconds);
   }
   scheme.addEventListener('change', paint);
 

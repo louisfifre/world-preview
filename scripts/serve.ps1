@@ -20,6 +20,11 @@ The work folder of the throwaway server, as in preview.ps1. run\preview when omi
 .PARAMETER Out
 Where this server reads and writes previews, <Dir>\out when omitted. The capture script gives its own.
 
+.PARAMETER Exports
+Where the page's Export button writes, one folder per export. run\exports when omitted: a folder of
+its own, apart from the throwaway server's files, so an export is easy to find and the work folder
+can be emptied without losing one.
+
 .PARAMETER Port
 The local port. A second server on another port (the capture script starts one) lives beside the
 first without touching it.
@@ -34,6 +39,7 @@ param(
     [string]$Pack,
     [string]$Dir,
     [string]$Out,
+    [string]$Exports,
     [int]$Port = 25590,
     [switch]$NoWindow,
     [switch]$NoTray
@@ -80,6 +86,8 @@ try {
     $Dir = [IO.Path]::GetFullPath($Dir)
     if (-not $Out) { $Out = Join-Path $Dir 'out' }
     $Out = [IO.Path]::GetFullPath($Out)
+    if (-not $Exports) { $Exports = $DefaultExports }
+    $Exports = [IO.Path]::GetFullPath($Exports)
 } catch { $listener.Stop(); throw }
 
 function Send-Bytes($context, [int]$status, [byte[]]$bytes, [string]$type) {
@@ -267,16 +275,16 @@ try {
                 Send-Reply $context 200
             }
             elseif ($method -eq 'GET' -and $path -eq '/api/preview/config') {
-                Send-Reply $context 200 (ConvertTo-Json (Get-PackTectonic $Pack))
+                Send-Reply $context 200 (ConvertTo-Json (Get-PackTectonic $Pack) -Depth 4)
             }
             elseif ($method -eq 'GET' -and $path -eq '/api/preview/run') {
                 $state = if ($Run) {
-                    @{ running = $true; seed = $Run.Seed; samples = $Run.Samples; tectonic = $Run.Tectonic
+                    @{ running = $true; seed = $Run.Seed; samples = $Run.Samples; detail = $Run.Detail; tectonic = $Run.Tectonic
                        seconds = [int]((Get-Date) - $Run.Started).TotalSeconds }
                 } else { @{ running = $false; error = $LastFailure; stopped = $LastStopped } }
                 Send-Reply $context 200 (ConvertTo-Json $state)
             }
-            elseif ($method -eq 'GET' -and $path -match '^/preview/data/((coarse-\d+-)?(heights|biomes)\.bin|preview\.json|coarse\.json|run\.json|section\.json|section-\d\.bin|ores\.json|structures\.json)$') {
+            elseif ($method -eq 'GET' -and $path -match '^/preview/data/((coarse-\d+-)?(heights|biomes)\.bin|preview\.json|coarse\.json|run\.json|section\.json|section-\d\.bin|ores\.json|structures\.json|timing\.json)$') {
                 $file = Join-Path $Out $Matches[1]
                 if (Test-Path $file) { Send-Bytes $context 200 ([IO.File]::ReadAllBytes($file)) 'application/octet-stream' }
                 else { Send-Reply $context 404 }
@@ -290,15 +298,26 @@ try {
                 # minute for the default area. Meanwhile the loop answers other requests: pings, the sketch.
                 $body = [IO.StreamReader]::new($request.InputStream, [Text.Encoding]::UTF8).ReadToEnd() | ConvertFrom-Json
                 $seed = [string]$body.seed
-                $tectonic = @{}
+                # The values come as numbers, a switch as 1 or 0; the run writes a switch back as true or false.
+                $tectonic = @{}; $asked = @{}
+                $kinds = @{}
+                foreach ($setting in (Get-PackTectonic $Pack).settings) { $kinds[$setting.key] = $setting.kind }
                 $valid = $seed -match '^[\w -]{1,64}$'
                 foreach ($entry in $body.tectonic.PSObject.Properties) {
-                    if ($TectonicKeys -notcontains $entry.Name -or $null -eq ($entry.Value -as [double])) { $valid = $false }
-                    else { $tectonic[$entry.Name] = [double]$entry.Value }
+                    $number = $entry.Value -as [double]
+                    if (-not $kinds.ContainsKey($entry.Name) -or $null -eq $number) { $valid = $false; continue }
+                    $asked[$entry.Name] = $number
+                    $tectonic[$entry.Name] = if ($kinds[$entry.Name] -eq 'switch') { $number -ne 0 } else { $number }
                 }
-                # Grid points per side, one every 16 blocks: from 4096 to 32768 blocks across, by steps of 4096.
+                # Grid points per side, counted every 16 blocks: from 4096 to 65536 blocks across, by steps of 4096.
                 $samples = if ($null -eq $body.samples) { 512 } else { $body.samples -as [int] }
-                if ($samples -lt 256 -or $samples -gt 2048 -or $samples % 256) { $valid = $false }
+                if ($samples -lt 256 -or $samples -gt 4096 -or $samples % 256) { $valid = $false }
+                # Blocks between two points of the map: 16 for the full map, 32 or 64 to stop at a sketch.
+                $detail = if ($null -eq $body.detail) { 16 } else { $body.detail -as [int] }
+                if ($detail -notin 16, 32, 64) { $valid = $false }
+                # Past 32768 blocks, the full map would hold four times the points of the widest one measured,
+                # and its cuts and structures as much more: the coarser details only.
+                if ($samples -gt 2048 -and $detail -eq 16) { $valid = $false }
                 if (-not $valid) { Send-Reply $context 400 }
                 elseif ($Run) { Send-Reply $context 409 (ConvertTo-Json @{ error = 'A preview is already being computed.' }) }
                 else {
@@ -306,14 +325,14 @@ try {
                     Remove-Item (Join-Path $Out 'coarse.json') -ErrorAction SilentlyContinue
                     $shell = [powershell]::Create()
                     $null = $shell.AddScript({
-                        param($script, $pack, $dir, $seed, $tectonic, $samples, $out)
-                        & $script -Pack $pack -Dir $dir -Seed $seed -Tectonic $tectonic -Samples $samples -Out $out *> $null
+                        param($script, $pack, $dir, $seed, $tectonic, $samples, $detail, $out)
+                        & $script -Pack $pack -Dir $dir -Seed $seed -Tectonic $tectonic -Samples $samples -Detail $detail -Out $out *> $null
                     })
-                    foreach ($argument in "$PSScriptRoot\preview.ps1", $Pack, $Dir, $seed, $tectonic, $samples, $Out) {
+                    foreach ($argument in "$PSScriptRoot\preview.ps1", $Pack, $Dir, $seed, $tectonic, $samples, $detail, $Out) {
                         $null = $shell.AddArgument($argument)
                     }
                     $Run = @{ Shell = $shell; Handle = $shell.BeginInvoke(); Context = $context
-                              Seed = $seed; Samples = $samples; Tectonic = $tectonic; Started = Get-Date }
+                              Seed = $seed; Samples = $samples; Detail = $detail; Tectonic = $asked; Started = Get-Date }
                     if ($tray) { $tray.Busy = $true }
                 }
             }
@@ -324,7 +343,7 @@ try {
             elseif ($path -match '^/api/preview/export/([\w-]{1,90})/((biomes|flat|height|temperature|structures)(-3d)?\.png|section\.png|export\.json)$') {
                 # One file of an export: the pictures of the map and what the page measured, kept in a
                 # folder of their own so a try can be looked at again, or shown to someone, later.
-                $folder = Join-Path (Join-Path $Dir 'exports') $Matches[1]
+                $folder = Join-Path $Exports $Matches[1]
                 $name = $Matches[2]
                 if ($request.ContentLength64 -gt 64MB) { Send-Reply $context 413 }
                 else {
@@ -333,6 +352,16 @@ try {
                     try { $request.InputStream.CopyTo($file) } finally { $file.Dispose() }
                     Send-Reply $context 200 (ConvertTo-Json @{ folder = $folder })
                 }
+            }
+            elseif ($path -match '^/api/preview/export/([\w-]{1,90})/open$') {
+                # A page cannot open a folder on the disk, so it asks here. Only an export's own folder: the
+                # name is a plain folder name, so it cannot point anywhere else.
+                $folder = Join-Path $Exports $Matches[1]
+                if (Test-Path $folder -PathType Container) {
+                    Start-Process explorer.exe -ArgumentList "`"$folder`""
+                    Send-Reply $context 200
+                }
+                else { Send-Reply $context 404 }
             }
             else {
                 Send-Reply $context 404
