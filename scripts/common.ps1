@@ -22,10 +22,6 @@ $DefaultDir = Join-Path $RepoRoot 'run\preview'
 # Where exports go unless told otherwise: beside the work folder rather than in it, among nothing else.
 $DefaultExports = Join-Path $RepoRoot 'run\exports'
 
-# The Tectonic values the page may change. They are the sliders, so a pack without Tectonic has nothing to tune here.
-$TectonicKeys = 'temperature_scale', 'vegetation_scale', 'temperature_multiplier', 'temperature_offset',
-    'vegetation_multiplier', 'vegetation_offset', 'vertical_scale', 'flat_terrain_skew', 'erosion_scale', 'ridge_scale', 'continents_scale', 'ocean_offset'
-
 function Resolve-Pack([string]$Pack) {
     # The pack is the one input with no sensible default: -Pack first, then WORLD_PREVIEW_PACK.
     # It is either a packwiz pack (pack.toml) or a plain game folder (mods and config), the one a launcher plays from.
@@ -48,13 +44,33 @@ function Resolve-Pack([string]$Pack) {
 function Test-PackwizPack([string]$Pack) { Test-Path (Join-Path $Pack 'pack.toml') }
 
 function Get-PackTectonic([string]$Pack) {
-    # The values the pack ships: where the sliders start.
-    $config = [IO.File]::ReadAllText((Join-Path $Pack 'config\tectonic.json'))
-    $values = @{}
-    foreach ($key in $TectonicKeys) {
-        if ($config -match ('"' + $key + '":\s*(-?[0-9.eE+-]+)')) { $values[$key] = [double]$Matches[1] }
+    # Every setting of the pack's Tectonic config, read from the file itself so that none is left out without
+    # a word: where the page's controls start. Each comes with its group, its kind (a number, or a switch
+    # given as 1 or 0) and the comment Tectonic writes above it, if any. Tectonic writes one setting per line,
+    # its groups one level deep. A name met twice would be ambiguous for a run, which replaces a value by
+    # its name: it is listed apart and left out.
+    $settings = [ordered]@{}
+    $duplicates = @()
+    $group = ''; $comment = ''
+    foreach ($line in [IO.File]::ReadAllLines((Join-Path $Pack 'config\tectonic.json'))) {
+        if ($line -match '^\s*//\s*(.*)$') { $comment = $Matches[1]; continue }
+        if ($line -match '^\s*"([\w-]+)"\s*:\s*\{') { $group = $Matches[1]; $comment = ''; continue }
+        if ($line -match '^\s*"([\w-]+)"\s*:\s*(-?[0-9.eE+-]+|true|false)\s*,?\s*$') {
+            $key, $raw = $Matches[1], $Matches[2]
+            # The file's own version number, not a setting of the world.
+            if ($key -eq 'minor_version') { $comment = ''; continue }
+            if ($settings.Contains($key)) { $duplicates += $key }
+            else {
+                $switch = $raw -in 'true', 'false'
+                $settings[$key] = @{ key = $key; group = $group; kind = $(if ($switch) { 'switch' } else { 'number' })
+                    value = $(if ($switch) { [double]($raw -eq 'true') } else { [double]::Parse($raw, [Globalization.CultureInfo]::InvariantCulture) })
+                    hint = $comment }
+            }
+        }
+        $comment = ''
     }
-    $values
+    foreach ($key in $duplicates) { $settings.Remove($key) }
+    @{ settings = @($settings.Values); duplicates = @($duplicates | Select-Object -Unique) }
 }
 
 function Get-FabricServerJar([string]$Pack, [string]$Dir) {

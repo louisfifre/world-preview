@@ -8,10 +8,10 @@ It was written while tuning a modpack's terrain, where every try used to mean st
 
 > **Personal project.** Windows only, driven by PowerShell scripts.
 
-<img src="docs/media/board-window.png" alt="The preview window: seed, width of the scanned area and ten terrain sliders on the left, the map in the middle, the figures and the list of biomes on the right." width="100%">
+<img src="docs/media/board-window.png" alt="The preview window: seed, width of the scanned area and the Tectonic settings in groups on the left, the map in the middle, the figures and the list of biomes on the right." width="100%">
 
 - **The real generator, without the world.** A throwaway dedicated server starts with the pack, and a small mod asks the generator two questions on a grid, one point every 16 blocks: how high is the ground, which biome is at the surface. No chunk is generated. Trees and caves are therefore not on the map, and a structure is a point where it would start.
-- **A seed and twelve sliders.** The sliders are [Tectonic](https://modrinth.com/mod/tectonic)'s values for the size and climate of biomes, the relief, and the continents. They start at the pack's values; a changed one keeps the pack's value beside it. Sets of values can be kept under a name.
+- **A seed and every Tectonic setting.** Each setting of the pack's [Tectonic](https://modrinth.com/mod/tectonic) config has its control, read from the file itself: a slider for a number, a slider of two places for a switch. They come in groups (biomes and climate, relief, continents with oceans and islands, caves, and what the map does not draw); a setting the page does not know yet still shows, with Tectonic's own comment. They start at the pack's values; a changed one keeps the pack's value beside it. Sets of values can be kept under a name.
 - **Sketches first, then the map.** A coarse sketch takes the map's place while the full map is computed, then finer ones replace it: on the widest area, one point every 256 blocks, then 64, then 32 (see the timings below). The steps of the run are listed under the map, each with the second it ended at, and the button stops the run. A setting moved during a run turns the button back into Generate, which stops that run and starts the new one.
 - **A coarser map, sooner.** Beside the button, the detail: a point every 64, 32 or 16 blocks, each with the wait it costs on this machine. A coarser map stops at that sketch: it comes sooner, and the views and figures it cannot give (flat land, structures, the section) are greyed.
 - **The machine stays usable.** The computation takes half of the processor's threads and runs below the normal priority, so the page and everything else keep answering while it works. It is slower for it, on purpose.
@@ -109,7 +109,7 @@ A coarser detail, measured on the same machine on 2026-11-13 (seed cap-1):
 
 Past 32768 blocks the full map is not offered: a coarser detail only.
 
-Another machine has its own pace: the page's "takes about" starts from these figures, then follows the last run made on the machine it is on. With every thread at the normal priority the widest map took 3 min 20 s here, and the machine stalled for seconds at a time meanwhile.
+Another machine has its own pace: the page shows no wait before a first run at a detail, then the one this machine took, scaled to the area. With every thread at the normal priority the widest map took 3 min 20 s here, and the machine stalled for seconds at a time meanwhile.
 
 Most of the first sketch's wait is the server start. A seed run for the first time took about 10 seconds more, once (22 s to the sketch, 32 s to the map, at 8192 blocks). The first run of all also downloads the game's server, and from the repository builds the mod: a few minutes.
 

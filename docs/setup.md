@@ -41,7 +41,7 @@ A page cannot start a program or read a file, so `serve.ps1` is the small local 
 | Route | What it does |
 | --- | --- |
 | `GET /` | The page. Its state can be asked in the address: `/?view=height,relief3d&biome=minecraft:desert`, or `/?view=structures&structure=surface` (a structure's id, or `surface` or `under` for a whole part). |
-| `GET /api/preview/config` | The pack's Tectonic values, where the sliders start. |
+| `GET /api/preview/config` | Every setting of the pack's Tectonic config, read from the file line by line: its name, its group, a number or a switch (as 1 or 0), its value, and the comment Tectonic writes above it. `minor_version`, the file's own version, is left out; a name found twice is left out and listed apart, since a run replaces a value by its name. The page draws one control per setting, so a setting missing from the page cannot go unseen. |
 | `POST /api/preview` | Starts a run in the background and answers when it ends. Only from the page itself: the `Origin` header must be the server's own. |
 | `GET /api/preview/run` | The run under way, if any: its seed, area, values and age in seconds. A window opened during a run reads it to join that run; once the run is over, it says what went wrong, if anything, or that it was stopped. |
 | `POST /api/preview/stop` | Stops the run under way, its Java included. The request that started the run then answers `stopped`. |

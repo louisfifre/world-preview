@@ -182,5 +182,8 @@ if (-not (Test-Path (Join-Path $Out 'preview.json'))) {
 } finally { $lock.ReleaseMutex() }
 
 # What this preview was made with, so the page can show the same seed and values next to the map.
-[IO.File]::WriteAllText((Join-Path $Out 'run.json'), (@{ seed = $Seed; tectonic = $Tectonic } | ConvertTo-Json))
+# A switch is kept as 1 or 0, the form the page's controls take.
+$recorded = @{}
+foreach ($key in $Tectonic.Keys) { $recorded[$key] = if ($Tectonic[$key] -is [bool]) { [int]$Tectonic[$key] } else { $Tectonic[$key] } }
+[IO.File]::WriteAllText((Join-Path $Out 'run.json'), (@{ seed = $Seed; tectonic = $recorded } | ConvertTo-Json))
 Write-Host "Preview ready in $Out ($([int]$watch.Elapsed.TotalSeconds) s)"

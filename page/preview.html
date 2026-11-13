@@ -145,6 +145,8 @@
     background: linear-gradient(var(--text), var(--text)) center / 2px 14px no-repeat;
   }
   .setting small { grid-column: 1 / -1; }
+  /* A switch is a slider of two places, off and on: short, so it does not pass for a range. */
+  .setting.switch input { width: 44px; }
   /* The ores under the ground: rows of numbers that show on the cut at once, unlike the sliders. */
   .group .at-once { font-size: 13px; }
   #addedActions { flex-wrap: wrap; gap: 0 16px; }
@@ -472,9 +474,11 @@
     colSpacing: 'one every',
     colSpacingHint: 'About how far apart two of them are: the side of the square each has to itself on this area.',
     colCount: 'count',
-    groups: { biomes: 'Biome size and climate', relief: 'Relief', continents: 'Continents and oceans', ores: 'Ores under the ground' },
+    groups: { biomes: 'Biome size and climate', relief: 'Relief', continents: 'Continents, oceans and islands', caves: 'Caves', other: 'Not drawn here', ores: 'Ores under the ground' },
     changed: count => `${count} changed`,
     changedHint: 'Values that differ from the pack’s',
+    on: 'on',
+    off: 'off',
     // Each hint says what changes in the world, in the direction that grows it.
     settings: {
       temperature_scale:      ['Temperature scale', 'Lower: wider warm and cold zones.'],
@@ -484,12 +488,45 @@
       temperature_offset:     ['Temperature offset', 'Higher: a warmer world.'],
       vegetation_offset:      ['Vegetation offset', 'Higher: a wetter world.'],
       vertical_scale:         ['Vertical scale', 'Higher: taller and steeper relief.'],
+      elevation_boost:        ['Elevation boost', 'Higher: mountains and plateaus grow faster than lowlands with the vertical scale.'],
       flat_terrain_skew:      ['Flat against plateaus', 'Higher: more flat land, fewer plateaus.'],
       erosion_scale:          ['Erosion scale', 'Lower: wider massifs, vaster plains.'],
       ridge_scale:            ['Ridge scale', 'Lower: wider rivers, broader valleys.'],
+      rolling_hills:          ['Rolling hills', 'Some plains get very smooth, hilly ground.'],
+      jungle_pillars:         ['Jungle pillars', 'Some jungles get pillars up to a hundred blocks tall.'],
+      ultrasmooth:            ['Ultrasmooth', 'Much smoother ground, at the cost of broken deep oceans and windswept biomes.'],
+      alternate_erosion_scaling: ['Alternate erosion scaling', 'Tectonic’s experimental way of scaling erosion.'],
+      min_y:                  ['Bottom of the world', 'Lower: a deeper world. In steps of 16 blocks.'],
+      max_y:                  ['Top of the world', 'Higher: room for taller relief. In steps of 16 blocks.'],
       continents_scale:       ['Continent scale', 'Lower: larger continents and oceans.'],
-      ocean_offset:           ['Land against ocean', 'Higher: more land, less ocean.'],
+      ocean_offset:           ['Land against ocean', 'Higher: more land, less ocean. Above −0.45 no deep ocean, so no islands.'],
+      alternate_continents_scaling: ['Alternate continents scaling', 'Tectonic’s experimental way of scaling continents.'],
+      ocean_depth:            ['Ocean depth', 'Lower: deeper oceans. −0.5 is 64 blocks under the sea.'],
+      deep_ocean_depth:       ['Deep ocean depth', 'Lower: deeper deep oceans. −0.5 is 64 blocks under the sea.'],
+      enabled:                ['Islands', 'Tectonic’s island land, laid in deep ocean only, more of it the deeper the ocean.'],
+      noise_scale:            ['Island scale', 'Lower: larger islands, further apart.'],
+      noise_multiplier:       ['Island contrast', 'Higher: the island noise swings wider, which raises more of the deep ocean into islands.'],
+      noise_offset:           ['Island amount', 'Higher: the island land rises everywhere in the deep ocean, so more islands.'],
+      cheese_enabled:         ['Cheese caves', 'The large, open caves.'],
+      cheese_additive:        ['Cheese caves size', 'Lower: bigger cheese caves.'],
+      spaghetti_enabled:      ['Spaghetti caves', 'The tunnelling, middle-sized caves.'],
+      noodle_enabled:         ['Noodle caves', 'The narrow caves.'],
+      noodle_additive:        ['Noodle caves size', 'Lower: bigger noodle caves.'],
+      depth_cutoff_start:     ['Caves close to the ground', 'Higher: caves stop deeper under the ground. 0.1 is about 12 blocks.'],
+      depth_cutoff_size:      ['Caves closing', 'Higher: caves close over more blocks.'],
+      lava_tunnels:           ['Lava tunnels', 'Rare, deep tunnels of lava at the bottom of the world.'],
+      underground_rivers:     ['Underground rivers', 'Rivers that reach mountains go on under them.'],
+      carvers_enabled:        ['Old caves and ravines', 'The carvers, which a chunk applies later: not in the section.'],
+      ore_fix:                ['Ore fix', 'Ores at better levels when the bottom of the world is lowered.'],
+      mod_enabled:            ['Tectonic', 'Off: the generator without Tectonic, as a comparison.'],
+      snow_start_offset:      ['Snow start', 'Moves the height where snow starts in cold biomes.'],
+      monument_offset:        ['Ocean monuments', 'Moves ocean monuments down for deeper oceans.'],
+      river_ice:              ['Ice on underground rivers', 'Under snowy biomes.'],
+      river_lanterns:         ['Lanterns over underground rivers', 'Rarely.'],
+      remove_frozen_ocean_ice:['No ice on frozen oceans', 'Makes them as easy to sail as deep frozen oceans.'],
     },
+    unknownSetting: 'A setting of the pack’s Tectonic that this page does not know yet: shown from its name, with Tectonic’s own comment.',
+    duplicateSettings: keys => `Left out, as their names appear twice in the pack’s Tectonic config: ${keys.join(', ')}.`,
     packValue: v => `pack ${v}`,
     resetOne: 'Back to the pack’s value',
     resetHint: 'Click “pack…” beside a value to put it back to the pack’s.',
@@ -570,15 +607,28 @@
   // A width read on a 16-block grid is not known to the block: round it to 50.
   const blocks = v => `${num(Math.round(v / 50) * 50)} blocks`;
 
-  // What each slider may explore. The starting values come from the pack.
-  const ranges = {
-    biomes:     { temperature_scale: [0.03, 0.5, 0.01], vegetation_scale: [0.03, 0.5, 0.01],
-                  temperature_multiplier: [0.5, 1.5, 0.05], vegetation_multiplier: [0.5, 1.5, 0.05],
-                  temperature_offset: [-0.5, 0.5, 0.05], vegetation_offset: [-0.5, 0.5, 0.05] },
-    relief:     { vertical_scale: [0.5, 2, 0.025], flat_terrain_skew: [-0.5, 0.5, 0.05],
-                  erosion_scale: [0.05, 0.5, 0.01], ridge_scale: [0.05, 0.5, 0.01] },
-    continents: { continents_scale: [0.03, 0.3, 0.01], ocean_offset: [-1, -0.2, 0.05] },
+  // Where each setting the page knows goes, and what its slider may explore: [group, min, max, step]. A switch
+  // has no range. The list of settings itself is the pack's Tectonic config, read whole by the server: a
+  // setting this table does not know still gets its slider, in the last group, so none is left out unseen.
+  const known = {
+    temperature_scale: ['biomes', 0.03, 0.5, 0.01], vegetation_scale: ['biomes', 0.03, 0.5, 0.01],
+    temperature_multiplier: ['biomes', 0.5, 1.5, 0.05], vegetation_multiplier: ['biomes', 0.5, 1.5, 0.05],
+    temperature_offset: ['biomes', -0.5, 0.5, 0.05], vegetation_offset: ['biomes', -0.5, 0.5, 0.05],
+    vertical_scale: ['relief', 0.5, 3, 0.025], elevation_boost: ['relief', 0, 1, 0.05],
+    flat_terrain_skew: ['relief', -0.5, 0.5, 0.05], erosion_scale: ['relief', 0.05, 0.5, 0.01], ridge_scale: ['relief', 0.05, 0.5, 0.01],
+    rolling_hills: ['relief'], jungle_pillars: ['relief'], ultrasmooth: ['relief'], alternate_erosion_scaling: ['relief'],
+    min_y: ['relief', -256, 0, 16], max_y: ['relief', 256, 512, 16],
+    continents_scale: ['continents', 0.01, 0.3, 0.01], ocean_offset: ['continents', -1, -0.2, 0.05], alternate_continents_scaling: ['continents'],
+    ocean_depth: ['continents', -1, 0, 0.01], deep_ocean_depth: ['continents', -1, 0, 0.01],
+    enabled: ['continents'], noise_scale: ['continents', 0.02, 0.5, 0.01], noise_multiplier: ['continents', 0, 2, 0.05], noise_offset: ['continents', -1, 1, 0.05],
+    cheese_enabled: ['caves'], cheese_additive: ['caves', -0.5, 1, 0.01], spaghetti_enabled: ['caves'],
+    noodle_enabled: ['caves'], noodle_additive: ['caves', -0.5, 0.5, 0.005],
+    depth_cutoff_start: ['caves', 0, 1, 0.05], depth_cutoff_size: ['caves', 0, 0.5, 0.05],
+    lava_tunnels: ['caves'], underground_rivers: ['caves'], carvers_enabled: ['caves'], ore_fix: ['caves'],
+    mod_enabled: ['relief'], snow_start_offset: ['other', 0, 256, 8], monument_offset: ['other', -64, 0, 1],
+    river_ice: ['other'], river_lanterns: ['other'], remove_frozen_ocean_ice: ['other'],
   };
+  const groupOrder = ['biomes', 'relief', 'continents', 'caves', 'other'];
 
   const $ = id => document.getElementById(id);
 
@@ -630,7 +680,9 @@
 
   // ---------- the settings column ----------
 
-  const packValues = await fetch('/api/preview/config').then(r => r.json());
+  const packConfig = await fetch('/api/preview/config').then(r => r.json());
+  const packSettings = packConfig.settings ?? [];
+  const packValues = Object.fromEntries(packSettings.map(s => [s.key, s.value]));
   const inputs = {};
   let shown = null;       // the seed, span and values the map on screen was made with
   let busy = false;
@@ -762,7 +814,7 @@
   // closes the others; what is opened or closed by hand holds until the view changes. No group is ever
   // left out of the list, and its title row counts its changed values, so nothing changed is out of sight.
   const opensFor = { biomes: ['biomes', 'continents'], flat: ['relief'], height: ['relief', 'continents'],
-                     temperature: ['biomes'], structures: ['biomes'], section: ['ores', 'relief'] };
+                     temperature: ['biomes'], structures: ['biomes'], section: ['ores', 'caves', 'relief'] };
   const groups = {};
   function makeGroup(key) {
     const box = document.createElement('section');
@@ -805,30 +857,45 @@
     groups[key].note.textContent = count ? text.changed(count) : '';
     groups[key].note.title = count ? text.changedHint : '';
   }
-  const changedIn = group => Object.keys(ranges[group]).filter(key => inputs[key] && Math.abs(inputs[key].value - packValues[key]) > 1e-9).length;
+  const groupOf = {};
+  const changedIn = group => Object.keys(inputs).filter(key => groupOf[key] === group && Math.abs(inputs[key].value - packValues[key]) > 1e-9).length;
 
-  for (const [group, keys] of Object.entries(ranges)) {
-    const body = makeGroup(group);
-    for (const [key, [min, max, step]] of Object.entries(keys)) {
-      const [label, hint] = text.settings[key];
-      const digits = step < 0.01 ? 3 : 2;
+  // Every setting of the pack's file, in the order the table above gives, then those it does not know.
+  const sorted = [...packSettings].sort((a, b) => {
+    const rank = s => known[s.key] ? Object.keys(known).indexOf(s.key) : Infinity;
+    return rank(a) - rank(b);
+  });
+  for (const group of groupOrder) makeGroup(group);
+  for (const { key, kind, hint: fileHint } of sorted) {
+    const value = packValues[key];
+    // A setting the page does not know: its range is drawn around the pack's value, a whole number keeping whole steps.
+    const reach = Math.max(1, Math.abs(value)), whole = Number.isInteger(value) && Math.abs(value) >= 2;
+    const [group, min, max, step] = kind === 'switch' ? [known[key]?.[0] ?? 'other', 0, 1, 1]
+      : known[key] ?? ['other', value - reach, value + reach, whole ? 1 : reach / 100];
+    groupOf[key] = group;
+    const [label, hint] = text.settings[key] ?? [key.replace(/_/g, ' ').replace(/^./, c => c.toUpperCase()), fileHint || ''];
+    {
+      const body = groups[group].body;
+      const digits = kind === 'switch' ? 0 : step < 0.01 ? 3 : step >= 1 ? 0 : 2;
+      const asText = v => kind === 'switch' ? (+v ? text.on : text.off) : num(+v, digits);
       const row = document.createElement('div');
-      row.className = 'setting';
+      row.className = 'setting' + (kind === 'switch' ? ' switch' : '');
       row.innerHTML = `<label for="${key}"></label><output class="num" for="${key}"></output>
         <input type="range" id="${key}" min="${min}" max="${max}" step="${step}"><small></small>`;
       row.querySelector('label').textContent = label;
       row.querySelector('small').textContent = hint;
+      if (!known[key]) row.title = text.unknownSetting;
       const input = row.querySelector('input');
       const output = row.querySelector('output');
-      input.value = packValues[key];
-      input.style.setProperty('--pack', (packValues[key] - min) / (max - min));
+      input.value = value;
+      input.style.setProperty('--pack', (value - min) / (max - min));
       const show = () => {
         const changed = Math.abs(input.value - packValues[key]) > 1e-9;
         // A changed value keeps the pack's value beside it, to know how far it went.
-        output.replaceChildren(num(+input.value, digits));
+        output.replaceChildren(asText(input.value));
         if (changed) {
           const pack = document.createElement('span');
-          pack.textContent = text.packValue(num(packValues[key], digits));
+          pack.textContent = text.packValue(asText(packValues[key]));
           pack.title = text.resetOne;
           pack.addEventListener('click', () => { input.value = packValues[key]; show(); });
           output.prepend(pack);
@@ -843,6 +910,13 @@
       body.append(row);
       show();
     }
+  }
+  // A group the pack gives nothing to stays out of the list.
+  for (const group of groupOrder) groups[group].box.hidden = !Object.values(groupOf).includes(group);
+  if (packConfig.duplicates?.length) {
+    const note = Object.assign(document.createElement('small'), { textContent: text.duplicateSettings(packConfig.duplicates) });
+    groups.other.box.hidden = false;
+    groups.other.body.prepend(note);
   }
   // The ores under the ground: rows that the section plays at once. The group is there when the preview has a section.
   {

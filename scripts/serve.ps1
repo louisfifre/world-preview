@@ -275,7 +275,7 @@ try {
                 Send-Reply $context 200
             }
             elseif ($method -eq 'GET' -and $path -eq '/api/preview/config') {
-                Send-Reply $context 200 (ConvertTo-Json (Get-PackTectonic $Pack))
+                Send-Reply $context 200 (ConvertTo-Json (Get-PackTectonic $Pack) -Depth 4)
             }
             elseif ($method -eq 'GET' -and $path -eq '/api/preview/run') {
                 $state = if ($Run) {
@@ -298,11 +298,16 @@ try {
                 # minute for the default area. Meanwhile the loop answers other requests: pings, the sketch.
                 $body = [IO.StreamReader]::new($request.InputStream, [Text.Encoding]::UTF8).ReadToEnd() | ConvertFrom-Json
                 $seed = [string]$body.seed
-                $tectonic = @{}
+                # The values come as numbers, a switch as 1 or 0; the run writes a switch back as true or false.
+                $tectonic = @{}; $asked = @{}
+                $kinds = @{}
+                foreach ($setting in (Get-PackTectonic $Pack).settings) { $kinds[$setting.key] = $setting.kind }
                 $valid = $seed -match '^[\w -]{1,64}$'
                 foreach ($entry in $body.tectonic.PSObject.Properties) {
-                    if ($TectonicKeys -notcontains $entry.Name -or $null -eq ($entry.Value -as [double])) { $valid = $false }
-                    else { $tectonic[$entry.Name] = [double]$entry.Value }
+                    $number = $entry.Value -as [double]
+                    if (-not $kinds.ContainsKey($entry.Name) -or $null -eq $number) { $valid = $false; continue }
+                    $asked[$entry.Name] = $number
+                    $tectonic[$entry.Name] = if ($kinds[$entry.Name] -eq 'switch') { $number -ne 0 } else { $number }
                 }
                 # Grid points per side, counted every 16 blocks: from 4096 to 65536 blocks across, by steps of 4096.
                 $samples = if ($null -eq $body.samples) { 512 } else { $body.samples -as [int] }
@@ -327,7 +332,7 @@ try {
                         $null = $shell.AddArgument($argument)
                     }
                     $Run = @{ Shell = $shell; Handle = $shell.BeginInvoke(); Context = $context
-                              Seed = $seed; Samples = $samples; Detail = $detail; Tectonic = $tectonic; Started = Get-Date }
+                              Seed = $seed; Samples = $samples; Detail = $detail; Tectonic = $asked; Started = Get-Date }
                     if ($tray) { $tray.Busy = $true }
                 }
             }
