@@ -31,6 +31,7 @@ It was written while tuning a modpack's terrain, where every try used to mean st
 
 <img src="docs/media/board-relief.png" alt="The biome map draped over the real heights, seen from low above the sea." width="100%">
 
+- **Warm seas and cold seas.** The Temperature view colours the sea like the land, seen through blue: a warm ocean, a cold one and a frozen one are told apart, and counted in the same five classes.
 - **The sea floor too.** The Relief view shades the floor of the sea like the land, and its list counts three depths of water beside the bands of height; in 3D the water is clearer there, so the floor is read through it.
 - **Draped over the real heights.** Any view can be shown in 3D, at true scale: one unit is one block, heights included.
 - **The settings of the view looked at.** The sliders are in groups, and each view opens the groups that move it: the relief for the Relief view, the climate for Temperature. The others stay in the list, closed, and say when they hold a changed value.

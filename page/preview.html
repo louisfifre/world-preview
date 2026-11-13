@@ -599,7 +599,6 @@
     legend: {
       flat: ['Flat', 'Slopes', 'Water'],
       temperature: ['Frozen', 'Cold', 'Temperate', 'Warm', 'Scorching'],
-      water: 'Water',
     },
   };
   const num = (v, digits = 0) => v.toLocaleString('en-US', { minimumFractionDigits: digits, maximumFractionDigits: digits });
@@ -1036,7 +1035,13 @@
     return p < 0.5 ? hslToRgb(214, 62, 42 + p * 2 * 46) : hslToRgb(10, 68, 88 - (p - 0.5) * 2 * 42);
   }
   const flatColours = { flat: hslToRgb(92, 48, 62), steep: hslToRgb(30, 8, 30), sea: hslToRgb(212, 45, 26) };
-  const quietWater = hslToRgb(212, 22, 20);
+  // The game gives every ocean but the frozen one the same temperature, 0.5: what tells a warm sea from
+  // a cold one is its name. So the name is read, onto the middles of the five classes of the land.
+  const seaTemperature = id => !/ocean/.test(id) ? null
+    : /frozen/.test(id) ? -0.7 : /cold/.test(id) ? -0.025 : /lukewarm/.test(id) ? 1.325 : /warm/.test(id) ? 2 : 0.65;
+  const climate = biome => seaTemperature(biome.id) ?? biome.temperature;
+  // Water keeps the colour of its temperature, seen through this blue.
+  const seaVeil = [28, 62, 130];
   const css = c => `rgb(${c})`;
 
   // The name alone: which mod a biome or a structure comes from does not help to judge the world. The id stays on hover.
@@ -1245,11 +1250,11 @@
         ...seaDepths.map((deep, i) => heightColour(sea - ((i ? seaDepths[i - 1] : 0) + deep) / 2, sea)).reverse(),
         ...[sea, ...heightSteps].map((low, i) => heightColour(i < heightSteps.length ? (low + heightSteps[i]) / 2 : low + 30, sea))];
     } else if (kind === 'temperature') {
-      // Five classes over the game's range, from -0.7 to 2; water apart, as on the map.
-      const band = world.biomes.map(b => Math.round(clamp((b.temperature + 0.7) / 2.7, 0, 1) * 4));
-      for (let i = 0; i < total; i++) at[i] = h[i] < sea ? 5 : band[world.biomeAt[i]];
-      names = [...text.legend.temperature, text.legend.water];
-      colours = [...text.legend.temperature.map((_, i) => temperatureColour(-0.7 + i * 2.7 / 4)), quietWater];
+      // Five classes over the game's range, from -0.7 to 2, the sea in them like the land.
+      const band = world.biomes.map(b => Math.round(clamp((climate(b) + 0.7) / 2.7, 0, 1) * 4));
+      for (let i = 0; i < total; i++) at[i] = band[world.biomeAt[i]];
+      names = text.legend.temperature;
+      colours = text.legend.temperature.map((_, i) => temperatureColour(-0.7 + i * 2.7 / 4));
     } else {
       for (let i = 0; i < total; i++) at[i] = h[i] < sea ? 2 : world.flatAt[i] ? 0 : 1;
       names = text.legend.flat;
@@ -1310,7 +1315,8 @@
       } else if (view === 'height') {
         c = heightColour(y, sea); shade = clamp(1 + slope * 0.012, 0.75, 1.25);
       } else if (view === 'temperature') {
-        c = water ? quietWater : temperatureColour(world.biomes[biome].temperature);
+        c = temperatureColour(climate(world.biomes[biome]));
+        if (water) c = c.map((v, k) => (v + seaVeil[k]) / 2);
         shade = clamp(1 + slope * 0.006, 0.85, 1.15);
       } else if (view === 'flat') {
         // A sketch does not say where the land is flat: its land stays neutral.
