@@ -3,6 +3,12 @@
 # every Windows has: nobody should install a shell to see a map.
 
 $ErrorActionPreference = 'Stop'
+# Windows PowerShell started from PowerShell 7 inherits its module folders, and takes PowerShell 7's copies of its
+# own modules from there: Get-FileHash is then missing and every run fails. Those folders go before any command
+# loads a module.
+if ($PSVersionTable.PSEdition -eq 'Desktop') {
+    $env:PSModulePath = ($env:PSModulePath -split ';' | Where-Object { $_ -and $_ -notmatch '\\PowerShell\\' }) -join ';'
+}
 # Windows PowerShell draws a progress bar that makes a download many times slower, and may still offer old TLS only.
 $ProgressPreference = 'SilentlyContinue'
 [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
