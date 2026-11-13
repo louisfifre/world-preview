@@ -145,8 +145,21 @@
     background: linear-gradient(var(--text), var(--text)) center / 2px 14px no-repeat;
   }
   .setting small { grid-column: 1 / -1; }
-  /* A switch is a slider of two places, off and on: short, so it does not pass for a range. */
-  .setting.switch input { width: 44px; }
+  /* A switch is not a slider: a small frame with a square that sits left when off, right and lit when on.
+     Underneath it stays a range of two places, so every value of the page is read the same way. */
+  .setting.switch input {
+    grid-column: auto; grid-row: 1; width: 30px; height: 16px; padding: 2px; align-self: center;
+    border: 1px solid var(--track); background: none;
+  }
+  .setting.switch input::-webkit-slider-runnable-track { height: 10px; }
+  .setting.switch input::-webkit-slider-thumb { width: 10px; height: 10px; background: var(--muted); }
+  .setting.switch input.on { border-color: var(--text); }
+  .setting.switch input.on::-webkit-slider-thumb { background: var(--text); }
+  .setting.switch input:hover::-webkit-slider-thumb { background: var(--text); }
+  /* Its word, on or off, sits before the frame on the same line. */
+  .setting.switch { grid-template-columns: 1fr auto auto; }
+  .setting.switch output { grid-column: 2; grid-row: 1; }
+  .setting.switch label { grid-row: 1; }
   /* The ores under the ground: rows of numbers that show on the cut at once, unlike the sliders. */
   .group .at-once { font-size: 13px; }
   #addedActions { flex-wrap: wrap; gap: 0 16px; }
@@ -905,6 +918,7 @@
         const changed = Math.abs(input.value - packValues[key]) > 1e-9;
         // A changed value keeps the pack's value beside it, to know how far it went.
         output.replaceChildren(asText(input.value));
+        if (kind === 'switch') input.classList.toggle('on', +input.value === 1);
         if (changed) {
           const pack = document.createElement('span');
           pack.textContent = text.packValue(asText(packValues[key]));
@@ -917,7 +931,12 @@
         if (!naming) showProfiles();
       };
       input.addEventListener('input', show);
-      input.addEventListener('dblclick', () => { input.value = packValues[key]; show(); });
+      if (kind === 'switch') {
+        // A click anywhere on the frame turns it over, where a range would only move to the half clicked.
+        const flip = () => { input.value = 1 - input.value; show(); };
+        input.addEventListener('pointerdown', event => { event.preventDefault(); input.focus(); flip(); });
+        input.addEventListener('keydown', event => { if (event.key === ' ' || event.key === 'Enter') { event.preventDefault(); flip(); } });
+      } else input.addEventListener('dblclick', () => { input.value = packValues[key]; show(); });
       inputs[key] = input;
       body.append(row);
       show();
