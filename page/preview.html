@@ -620,6 +620,8 @@
   const inputs = {};
   let shown = null;       // the seed, span and values the map on screen was made with
   let busy = false;
+  let inRun = null;       // the seed, span and values of the run under way
+  let queued = null;      // the run to start once the one under way has stopped
   let trouble = '';       // what went wrong; it stays until the next attempt
   let said = '';          // how the last run ended, when it did not go wrong
   let exporting = false;  // pictures are being taken: the map is drawn whole, whatever is chosen
@@ -641,10 +643,19 @@
 
   // The button keeps its name. It is greyed when there is nothing new to compute, and the line
   // above it says why: the map already shows these settings, or a run is under way.
+  // Whether the settings on screen are those of a map, or of a run: then there is nothing new to compute.
+  const sameAs = made => !!made && made.seed === $('seed').value.trim() && made.samples === samples
+    && Object.entries(inputs).every(([key, input]) => Math.abs(input.value - made.values[key]) < 1e-9);
   function showButton() {
-    if (busy) return;
-    const same = !!shown && shown.seed === $('seed').value.trim() && shown.samples === samples
-      && Object.entries(inputs).every(([key, input]) => Math.abs(input.value - shown.values[key]) < 1e-9);
+    if (busy) {
+      // While a run is under way the button stops it, unless a setting moved: then it starts the new
+      // run in its place, the running one cut first, in one press.
+      const again = !sameAs(inRun);
+      $('generate').textContent = again ? text.generate : text.stop;
+      $('generate').classList.toggle('stop', !again);
+      return;
+    }
+    const same = sameAs(shown);
     $('generate').disabled = same;
     $('status').className = trouble ? 'trouble' : '';
     $('status').textContent = trouble || said || (same ? text.upToDate : '');
@@ -2217,13 +2228,13 @@
   // Waits for a run with the page: the steps, the sketches, then the map or the trouble. `ended` resolves
   // when the run is over, with `stopped` if someone stopped it, and throws what went wrong. The run is
   // either the one this page asks for, or one found under way on opening, `already` seconds old.
-  async function follow(ended, already = 0) {
+  async function follow(ended, run, already = 0) {
     trouble = said = '';
     busy = true;
-    // While the run is under way, the button stops it.
+    inRun = run;
+    // While the run is under way, the button stops it, or starts another in its place.
     $('generate').disabled = false;
-    $('generate').textContent = text.stop;
-    $('generate').classList.add('stop');
+    showButton();
     $('status').className = '';
     // The map on screen is about to be replaced: it steps back while the new one is computed.
     $('frame').classList.add('busy');
@@ -2297,25 +2308,35 @@
     }
     // The steps stay, to see where the time went; the one that did not end is left out.
     showSteps(done, '', finished ? 1 : share());
+    inRun = null;
     showButton();
+    // A run asked for while this one was under way starts now that it has stopped.
+    if (queued) { const next = queued; queued = null; next(); }
   }
 
+  function generate() {
+    const tectonic = Object.fromEntries(Object.entries(inputs).map(([key, input]) => [key, +input.value]));
+    // An empty seed is one drawn here, so the run can be named and done again.
+    const seed = $('seed').value.trim() || String(crypto.getRandomValues(new Uint32Array(1))[0] * 2 ** 20 + crypto.getRandomValues(new Uint32Array(1))[0] % 2 ** 20);
+    // Shown at once: the field is what the button compares with the run under way.
+    $('seed').value = seed;
+    follow(async () => {
+      const reply = await fetch('/api/preview', { method: 'POST', body: JSON.stringify({ seed, samples, tectonic }) });
+      if (!reply.ok) throw new Error(reply.status === 400 ? text.refused : text.failed);
+      return reply.json().catch(() => null);
+    }, { seed, samples, values: tectonic });
+  }
   $('generate').addEventListener('click', () => {
     if (exporting) return;
     if (busy) {
+      // A setting moved: the new run waits for this one to stop, then starts by itself.
+      if (!sameAs(inRun)) queued = generate;
       // One press is enough: the run ends a moment later, and the wait for it says so.
       $('generate').disabled = true;
       fetch('/api/preview/stop', { method: 'POST' }).catch(() => { });
       return;
     }
-    const tectonic = Object.fromEntries(Object.entries(inputs).map(([key, input]) => [key, +input.value]));
-    // An empty seed is one drawn here, so the run can be named and done again.
-    const seed = $('seed').value.trim() || String(crypto.getRandomValues(new Uint32Array(1))[0] * 2 ** 20 + crypto.getRandomValues(new Uint32Array(1))[0] % 2 ** 20);
-    follow(async () => {
-      const reply = await fetch('/api/preview', { method: 'POST', body: JSON.stringify({ seed, samples, tectonic }) });
-      if (!reply.ok) throw new Error(reply.status === 400 ? text.refused : text.failed);
-      return reply.json().catch(() => null);
-    });
+    generate();
   });
 
   // ---------- export ----------
@@ -2422,7 +2443,7 @@
         if (now.error) throw new Error(text.failed);
         return now;
       }
-    }, running.seconds);
+    }, { seed: String(running.seed), samples: running.samples, values: Object.fromEntries(Object.entries(inputs).map(([key, input]) => [key, +input.value])) }, running.seconds);
   }
   scheme.addEventListener('change', paint);
 
