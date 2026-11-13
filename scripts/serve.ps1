@@ -342,6 +342,16 @@ try {
                     Send-Reply $context 200 (ConvertTo-Json @{ folder = $folder })
                 }
             }
+            elseif ($path -match '^/api/preview/export/([\w-]{1,90})/open$') {
+                # A page cannot open a folder on the disk, so it asks here. Only an export's own folder: the
+                # name is a plain folder name, so it cannot point anywhere else.
+                $folder = Join-Path $Exports $Matches[1]
+                if (Test-Path $folder -PathType Container) {
+                    Start-Process explorer.exe -ArgumentList "`"$folder`""
+                    Send-Reply $context 200
+                }
+                else { Send-Reply $context 404 }
+            }
             else {
                 Send-Reply $context 404
             }

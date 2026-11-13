@@ -255,6 +255,14 @@
   .step { white-space: nowrap; }
   .step b { display: inline-block; width: 12px; font-weight: 400; }
   .step.now { color: var(--text); }
+  /* Where the last export went, in the steps' place once they are done: a sentence in the status line was
+     missed. It stays until it is closed, or until a run or an export takes the place again. The path can be
+     selected and copied. */
+  .saved { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 16px; font-size: 12px; }
+  .saved .path { flex: 1 1 100%; color: var(--text); user-select: text; overflow-wrap: anywhere; }
+  .saved .path span { color: var(--muted); margin-right: 6px; white-space: nowrap; }
+  .saved button { padding: 0; font-size: 12px; text-decoration: underline; text-underline-offset: 3px; color: var(--muted); }
+  .saved button:hover { color: var(--text); }
   /* The section takes the square's place: the whole cut drawn small, then the part looked at, at true scale. */
   #frame.cut { width: 100cqw; height: calc(100cqh - 40px - var(--under)); aspect-ratio: auto; }
   #cut { position: absolute; inset: 0; display: flex; flex-direction: column; gap: 8px; }
@@ -420,7 +428,11 @@
     exporting: 'Exporting…',
     exportStep: view => `Pictures: ${view}`,
     exportData: 'Settings and figures',
-    exported: folder => `Exported to ${folder}`,
+    exported: 'Exported.',
+    exportedTo: 'Exported to',
+    openFolder: 'Open the folder',
+    closeNotice: 'Close',
+    openFailed: 'The folder could not be opened: it may have been moved or deleted.',
     exportFailed: 'The export failed.',
     figures: 'In figures',
     change: 'change',
@@ -2335,6 +2347,7 @@
       // Drawing a wide map holds the page: let it show the step first.
       await new Promise(resolve => setTimeout(resolve, 30));
     };
+    let saved = '';
     try {
       const total = world.samples ** 2, lists = {};
       for (const kind of kinds) {
@@ -2362,14 +2375,32 @@
         ores: cutShown ? { added: oreRows, perChunk: cutShown.perChunk } : null,
       }, null, 2));
       done.push([text.exportData, seconds()]);
-      said = text.exported(folder);
+      said = text.exported;
+      saved = folder;
     } catch (e) { trouble = e.message || text.exportFailed; }
     view = was;
     exporting = false;
     paint();
-    showSteps(done, '', done.length / (kinds.length + 1));
+    if (saved) showSaved(name, saved); else showSteps(done, '', done.length / (kinds.length + 1));
     showButton();
   });
+
+  // Where an export went, under the map, until it is closed. The page cannot open a folder itself: the
+  // server does, and only that export's own folder.
+  function showSaved(name, folder) {
+    const notice = document.createElement('div'), path = document.createElement('div');
+    notice.className = 'saved';
+    path.className = 'path';
+    path.append(Object.assign(document.createElement('span'), { textContent: text.exportedTo }), folder);
+    const button = (label, act) => Object.assign(document.createElement('button'), { textContent: label, onclick: act });
+    notice.append(path,
+      button(text.openFolder, async () => {
+        const reply = await fetch(`/api/preview/export/${encodeURIComponent(name)}/open`, { method: 'POST' }).catch(() => null);
+        if (!reply?.ok) say(text.openFailed);
+      }),
+      button(text.closeNotice, () => $('steps').replaceChildren()));
+    $('steps').replaceChildren(notice);
+  }
   world = await loadWorld();
   if (world) showWorld(); else showTabs();
   showButton();

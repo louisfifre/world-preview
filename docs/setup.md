@@ -42,6 +42,7 @@ A page cannot start a program or read a file, so `serve.ps1` is the small local 
 | `GET /api/preview/run` | The run under way, if any: its seed, area, values and age in seconds. A window opened during a run reads it to join that run; once the run is over, it says what went wrong, if anything, or that it was stopped. |
 | `POST /api/preview/stop` | Stops the run under way, its Java included. The request that started the run then answers `stopped`. |
 | `POST /api/preview/export/<name>/<file>` | Writes one file of an export into `<Exports>\<name>`, the exports folder being `-Exports` of `serve.ps1` (`run\exports` by default): a picture of a view (`biomes.png`, `height-3d.png`, `structures.png`…), of the part of the cut on screen (`section.png`), or `export.json`, the settings and what the page measured. |
+| `POST /api/preview/export/<name>/open` | Opens that export's folder in the file explorer, which a page cannot do itself. Only a folder of the exports folder, and only one that exists. |
 | `GET /preview/data/<file>` | The files of the last run, the sketch, the cuts, the ore rules and the structure starts included. |
 | `GET /api/ping` | The page pings every 10 seconds; the server stops about 90 seconds after the pings stop, never during a run. |
 
