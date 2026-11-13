@@ -176,19 +176,17 @@
   /* What the map on screen cannot show, for want of detail: still there, but out of reach. */
   .choice button:disabled { opacity: 0.35; }
   #controls { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 22px; }
-  /* On a short window the seed, the area and the head would leave the groups a sliver: everything above
-     the button scrolls as one list instead, the group titles still pinned, and the button and its line stay
-     at the foot. The spaces tighten a little, the button too. */
+  /* The column shows one thing at a time, the seed, the area or the settings, chosen at its top: the three
+     under each other left the sliders a sliver on a short window. */
+  #panels { flex: none; }
+  #panels button { font-weight: 600; }
+  [data-panel=span] output { grid-column: 1 / -1; }
+  #tuning { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 14px; }
+  /* On a short window the spaces tighten a little, the button too. */
   @media (max-height: 800px) {
     body { padding-top: 16px; padding-bottom: 16px; }
     .column { gap: 16px; }
-    #controls {
-      gap: 16px; overflow-y: auto; margin-right: -10px; padding: 0 10px 28px 0;
-      scrollbar-width: thin; scrollbar-color: var(--line) transparent;
-      -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent);
-              mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent);
-    }
-    #settings { flex: none; overflow: visible; margin-right: 0; padding: 0; -webkit-mask-image: none; mask-image: none; }
+    #controls { gap: 16px; }
     #run { gap: 6px; }
     #generate { height: 40px; padding-top: 6px; }
   }
@@ -346,24 +344,23 @@
 <body>
   <section class="column">
     <div id="controls">
-      <div>
-        <h2 data-text="seed"></h2>
+      <div id="panels" class="choice"></div>
+      <div data-panel="seed">
         <input type="text" id="seed" maxlength="64" spellcheck="false">
       </div>
-      <div class="setting">
-        <h2 data-text="span"></h2><output class="num" id="areaValue" for="area"></output>
+      <div class="setting" data-panel="span">
+        <output class="num" id="areaValue" for="area"></output>
         <input type="range" id="area" min="256" max="4096" step="256">
         <small id="areaHint"></small>
       </div>
-      <div>
-        <h2 data-text="profiles"></h2>
+      <div id="tuning" data-panel="profiles">
         <div id="profiles" class="choice"></div>
+        <div id="settings" class="scroll"></div>
       </div>
-      <div id="settings" class="scroll"></div>
     </div>
     <div id="run">
-      <div id="details" class="choice"></div>
       <div id="status" role="status"></div>
+      <div id="details" class="choice"></div>
       <button id="generate" data-text="generate"></button>
     </div>
   </section>
@@ -645,6 +642,23 @@
   addEventListener('keydown', event => { if ((event.ctrlKey || event.metaKey) && '+-=_'.includes(event.key)) event.preventDefault(); });
 
   for (const el of document.querySelectorAll('[data-text]')) el.textContent = text[el.dataset.text];
+
+  // The settings first: they are what is worked on, the seed and the area are set once. A choice made by
+  // hand is kept by the browser; one asked in the address, for a picture, is not.
+  function showPanel(key, keep) {
+    if (!document.querySelector(`[data-panel="${key}"]`)) key = 'profiles';
+    for (const el of document.querySelectorAll('[data-panel]')) el.hidden = el.dataset.panel !== key;
+    for (const tab of $('panels').children) tab.setAttribute('aria-pressed', tab.dataset.key === key);
+    if (keep) try { localStorage.setItem('preview.panel', key); } catch { }
+  }
+  for (const key of ['seed', 'span', 'profiles']) {
+    const tab = document.createElement('button');
+    tab.textContent = text[key];
+    tab.dataset.key = key;
+    tab.onclick = () => showPanel(key, true);
+    $('panels').append(tab);
+  }
+  { let kept = null; try { kept = localStorage.getItem('preview.panel'); } catch { } showPanel(kept || 'profiles'); }
   $('seed').placeholder = text.seedRandom;
   $('filter').placeholder = text.filter;
   const scheme = matchMedia('(prefers-color-scheme: dark)');
@@ -836,10 +850,9 @@
   // show it whole, or from its title when it is taller than the list.
   function openGroupsFor(shown, scroll = true) {
     for (const key in groups) openGroup(key, opensFor[shown].includes(key));
-    // A window just opened starts at its top, on the seed.
+    // A window just opened starts at the top of its list.
     if (!scroll) return;
-    // What scrolls is the list of groups, or on a short window the whole column above the button.
-    const list = getComputedStyle($('controls')).overflowY === 'auto' ? $('controls') : $('settings');
+    const list = $('settings');
     const first = groups[opensFor[shown][0]].box;
     const top = first.getBoundingClientRect().top - list.getBoundingClientRect().top + list.scrollTop;
     // The list's own room, less the fade at its foot.
@@ -2609,6 +2622,7 @@
     else if (s) s.ids.forEach((kind, i) => { if (s.under[i] === part && s.count[i]) chosen.structures.add(kind); });
   }
   if (world && chosen.biomes.size) { showChoice(); paint(); }
+  if (asked.get('panel')) showPanel(asked.get('panel'));
   for (const key of (asked.get('view') || '').split(',')) $('tabs').querySelector(`[data-view="${key}"]`)?.click();
   // Tells a capture that everything asked for is drawn (see scripts/capture.ps1).
   await drawing3d;
