@@ -20,6 +20,11 @@ The work folder of the throwaway server, as in preview.ps1. run\preview when omi
 .PARAMETER Out
 Where this server reads and writes previews, <Dir>\out when omitted. The capture script gives its own.
 
+.PARAMETER Exports
+Where the page's Export button writes, one folder per export. run\exports when omitted: a folder of
+its own, apart from the throwaway server's files, so an export is easy to find and the work folder
+can be emptied without losing one.
+
 .PARAMETER Port
 The local port. A second server on another port (the capture script starts one) lives beside the
 first without touching it.
@@ -34,6 +39,7 @@ param(
     [string]$Pack,
     [string]$Dir,
     [string]$Out,
+    [string]$Exports,
     [int]$Port = 25590,
     [switch]$NoWindow,
     [switch]$NoTray
@@ -80,6 +86,8 @@ try {
     $Dir = [IO.Path]::GetFullPath($Dir)
     if (-not $Out) { $Out = Join-Path $Dir 'out' }
     $Out = [IO.Path]::GetFullPath($Out)
+    if (-not $Exports) { $Exports = $DefaultExports }
+    $Exports = [IO.Path]::GetFullPath($Exports)
 } catch { $listener.Stop(); throw }
 
 function Send-Bytes($context, [int]$status, [byte[]]$bytes, [string]$type) {
@@ -324,7 +332,7 @@ try {
             elseif ($path -match '^/api/preview/export/([\w-]{1,90})/((biomes|flat|height|temperature|structures)(-3d)?\.png|section\.png|export\.json)$') {
                 # One file of an export: the pictures of the map and what the page measured, kept in a
                 # folder of their own so a try can be looked at again, or shown to someone, later.
-                $folder = Join-Path (Join-Path $Dir 'exports') $Matches[1]
+                $folder = Join-Path $Exports $Matches[1]
                 $name = $Matches[2]
                 if ($request.ContentLength64 -gt 64MB) { Send-Reply $context 413 }
                 else {

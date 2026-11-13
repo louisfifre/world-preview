@@ -19,6 +19,8 @@ $Bootstrap = Join-Path $ToolsDir 'packwiz-installer-bootstrap.jar'
 $BootstrapUrl = 'https://github.com/packwiz/packwiz-installer-bootstrap/releases/download/v0.0.3/packwiz-installer-bootstrap.jar'
 # The default work folder: inside the repository and ignored by git, so a first try needs no choice.
 $DefaultDir = Join-Path $RepoRoot 'run\preview'
+# Where exports go unless told otherwise: beside the work folder rather than in it, among nothing else.
+$DefaultExports = Join-Path $RepoRoot 'run\exports'
 
 # The Tectonic values the page may change. They are the sliders, so a pack without Tectonic has nothing to tune here.
 $TectonicKeys = 'temperature_scale', 'vegetation_scale', 'temperature_multiplier', 'temperature_offset',

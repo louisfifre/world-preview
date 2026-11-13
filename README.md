@@ -34,8 +34,7 @@ It was written while tuning a modpack's terrain, where every try used to mean st
 - **The settings of the view looked at.** The sliders are in groups, and each view opens the groups that move it: the relief for the Relief view, the climate for Temperature. The others stay in the list, closed, and say when they hold a changed value.
 - **Where structures would start.** The Structures view lists every village, outpost, wreck or ruin the generator would start in the area, those of the mods included, with how many there are and how far apart, in two parts: built on the surface, built under the ground. A kind is drawn on the map once its row is clicked, and none at first: a wide area holds tens of thousands of starts, most of them mineshafts (the game starts one in about 250 chunks, so one every 250 blocks or so).
 - **A cut through the ground, with its ores.** The Section view shows a line across the whole area, from the bottom of the world to its top: a strip of its whole length, and the part chosen on it at true scale, with the generator's own rock, caves, water and lava. The ores are played on it from the rules the server loaded, those of the game and of every mod, and counted near the ground, under low and under high ground. Ores placed at a depth counted from the ground can be added or changed in rows beside the sliders, and the cut follows at once.
-- **A try can be kept.** Export writes a folder under `run\preview\exports`: the settings and the figures in one file, and a picture of each view, flat and in 3D.
-
+- **A try can be kept.** Export writes a folder under `run\exports`: the settings and the figures in one file, and a picture of each view, flat and in 3D.
 ## Requirements
 
 Nothing to install for whoever already plays Minecraft 26.3 with Fabric mods on Windows:
@@ -78,7 +77,7 @@ scripts/serve.ps1 -Pack D:\path\to\my-game-folder-or-pack
 
 `-Pack` is a game folder or a packwiz pack; it can also come from the environment variable `WORLD_PREVIEW_PACK`. `serve.ps1` opens the page on `http://localhost:25590`. From the repository the mod is built on the first run, which needs a JDK 25 and a few minutes; `scripts/package.ps1` makes the ready-to-use zip, with the mod already built.
 
-The throwaway server works in `run\preview` inside this folder unless `-Dir` names another one. A preview from a shell, without the page:
+The throwaway server works in `run\preview` inside this folder unless `-Dir` names another one; exports go to `run\exports` unless `-Exports` names another one. A preview from a shell, without the page:
 
 ```powershell
 scripts/preview.ps1 -Pack D:\path\to\my-pack -Seed cap-1 -Tectonic @{ vertical_scale = 1.2 }
