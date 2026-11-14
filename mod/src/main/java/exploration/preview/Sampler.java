@@ -146,13 +146,14 @@ final class Sampler {
 	}
 
 	/**
-	 * How many threads sample: {@code -Dworldpreview.threads} when given, else half of what the machine
-	 * has. Half leaves a core in two to whatever else the person is doing, on any machine, and on the
-	 * usual processor with two threads per core it is one thread per real core.
+	 * How many threads sample: {@code -Dworldpreview.threads} when given, else three quarters of what
+	 * the machine has. The quarter left over keeps the rest of the machine answering, along with the
+	 * priority below normal the server runs at. Half was the rule before that priority existed; three
+	 * quarters gives the same files a quarter sooner on a wide pass (measured, 16 threads).
 	 */
 	private static int threads() {
 		int asked = Integer.getInteger("worldpreview.threads", 0);
-		return asked > 0 ? asked : Math.max(1, Runtime.getRuntime().availableProcessors() / 2);
+		return asked > 0 ? asked : Math.max(1, Runtime.getRuntime().availableProcessors() * 3 / 4);
 	}
 
 	private static Grid run(Path out, Generator source, ForkJoinPool pool, int samples, int step, int origin,

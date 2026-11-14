@@ -28,7 +28,7 @@ The page plays those rules on the cut itself: for each chunk along it, each rule
 
 Compared once with real chunks (a census of another world of the same pack, low ground): the play gave about a fifth to a half more ore per chunk for the deep ores. Read its figures as one try against another, not as a count.
 
-The computation leaves room for the rest of the machine: the mod samples on half of the available processors (`-Dworldpreview.threads=<n>` on the server's command line says otherwise), and `preview.ps1` puts the server below the normal priority. With every thread at the normal priority, a full pass made the machine stall for seconds at a time.
+The computation leaves room for the rest of the machine: the mod samples on three quarters of the available processors (`-Dworldpreview.threads=<n>` on the server's command line says otherwise), and `preview.ps1` puts the server below the normal priority. With every thread at the normal priority, a full pass made the machine stall for seconds at a time. Half was the rule before that priority; on 16 threads, 14 instead of 8 took a pass of 1024 x 1024 points from 40 s to 30 s, with the same files.
 
 `-Mods` (or the environment variable `WORLD_PREVIEW_MODS`, paths separated by semicolons) adds jars to the server on top of the pack's, for a mod being worked on; those of the run before leave the folder first.
 
