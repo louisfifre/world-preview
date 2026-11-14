@@ -444,8 +444,8 @@
     steps: {
       start: 'Starting the game',
       sketch: step => `Sketch, every ${step} blocks`,
-      full: 'Full map and figures',
       last: step => `Map, every ${step} blocks`,
+      extras: 'Cuts, ores and structures',
       readable: 'The sketch on the map can be read already.',
     },
     stopped: 'Stopped. The map is the one from before.',
@@ -1158,6 +1158,38 @@
     if (heights.length !== meta.samples ** 2 || biomeAt.length !== meta.samples ** 2) return null;
     return { ...meta, heights, biomeAt, colours: meta.biomes.map(b => biomeColour(b.id)), sketch: true };
   }
+
+  // The map's own points known so far, over the sketch `base`: the map fills in tile by tile instead of
+  // appearing at the end. A point the map's pass has not reached takes the sketch point it falls in, its
+  // biome renumbered into the draft's list (every biome the generator can place). Drawn like a sketch.
+  async function loadDraft(base) {
+    const meta = await fetch('/preview/data/partial.json').then(r => r.ok ? r.json() : null);
+    if (!meta) return null;
+    const [heights, known] = await Promise.all([
+      fetch('/preview/data/partial-heights.bin').then(r => r.arrayBuffer()).then(b => new Int16Array(b)),
+      fetch('/preview/data/partial-biomes.bin').then(r => r.arrayBuffer()).then(b => new Uint16Array(b)),
+    ]);
+    const n = meta.samples, ratio = base.step / meta.step;
+    if (heights.length !== n * n || known.length !== n * n || base.samples * ratio !== n) return null;
+    const index = new Map(meta.biomes.map((b, i) => [b.id, i]));
+    const renumber = base.biomes.map(b => index.get(b.id) ?? 0);
+    const biomeAt = new Uint16Array(n * n);
+    for (let row = 0; row < n; row++) {
+      for (let col = 0; col < n; col++) {
+        const i = row * n + col;
+        // 0xFFFF: a point not sampled yet.
+        if (known[i] !== 0xFFFF) { biomeAt[i] = known[i]; continue; }
+        const j = Math.floor(row / ratio) * base.samples + Math.floor(col / ratio);
+        heights[i] = base.heights[j];
+        biomeAt[i] = renumber[base.biomeAt[j]];
+      }
+    }
+    // The list is the same at every draft of a run: its colours are worked out once.
+    const ids = meta.biomes.map(b => b.id).join();
+    if (draftColours.ids !== ids) draftColours = { ids, colours: meta.biomes.map(b => biomeColour(b.id)) };
+    return { ...base, ...meta, heights, biomeAt, colours: draftColours.colours, sketch: true };
+  }
+  let draftColours = {};
 
   // Sizes of the zones made of touching points that share a value. `each(value, size)` gets every zone.
   function zones(valueAt, n, each) {
@@ -2417,39 +2449,54 @@
     const seconds =() => Math.round((Date.now() - started) / 1000);
     // Nothing to wait against on a first run at this detail: it is being measured.
     const expected = about(run.samples, run.detail);
-    const last = run.detail > 16 ? text.steps.last(run.detail) : text.steps.full;
-    // The game starts, sketches land, each finer than the one before, then the full map. How many
-    // sketches depends on the area, so each is listed as it lands. Only these landings are known: within
-    // a step, the hairline follows the clock against the wait this machine took last time.
+    // The game starts, then the passes: sketches, each finer than the one before, the map, and for a full
+    // map its cuts, ores and structures. The mod says which pass is under way and how many of its tiles
+    // are done (progress.json), so each step shows as it starts, with its share; the hairline under them
+    // follows the clock against the wait this machine took last time, the whole run being longer than its passes.
     const done = [];
-    let stage = text.steps.start;
+    let stage = text.steps.start, part = null, passKey = '';
+    const passLabel = p => p.pass === 'sketch' ? text.steps.sketch(p.step) : p.pass === 'map' ? text.steps.last(p.step) : text.steps.extras;
     const share = () => expected ? Math.min(0.97, seconds() / expected) : 0;
     const tick = () => {
       const elapsed = text.duration(seconds());
-      showSteps(done, stage, share());
+      showSteps(done, part == null ? stage : `${stage} · ${part} %`, share());
       $('status').textContent = `${expected ? text.running(elapsed, text.duration(expected)) : text.measuring(elapsed)}${world?.sketch ? ` ${text.steps.readable}` : ''}`;
     };
     const clock = setInterval(tick, 1000);
     tick();
-    // The sketches take the map's place. The figures and the list stay those of the map before,
-    // stepped back, until the full map is there.
+    // The sketches take the map's place, then the map's own points as they come, over the last sketch.
+    // The figures and the list stay those of the map before, stepped back, until the full map is there.
     const old = world;
-    let waiting = true, poll = 0;
-    const lookForSketch = async () => {
-      const sketch = await loadSketch(world?.sketch ? world.step : Infinity).catch(() => null);
-      if (!waiting) return;
-      poll = setTimeout(lookForSketch, 1000);
-      if (!sketch) return;
-      world = sketch;
-      if (stage === text.steps.start) { done.push([stage, seconds()]); stage = last; }
-      done.push([text.steps.sketch(sketch.step), seconds()]);
+    let waiting = true, poll = 0, base = null, drafted = 0;
+    const draw = next => {
+      world = next;
       $('frame').classList.remove('busy');
       $('numbers').classList.add('stale');
       $('numbers').inert = true;
-      showTabs(); restProbe(); tick();
+      showTabs(); restProbe();
     };
-    // The server removes the sketch of the run before as it takes this one: ask a little later.
-    poll = setTimeout(lookForSketch, 1000);
+    const look = async () => {
+      const progress = await fetch('/preview/data/progress.json').then(r => r.ok ? r.json() : null).catch(() => null);
+      const sketch = await loadSketch(base ? base.step : Infinity).catch(() => null);
+      if (!waiting) return;
+      if (progress && `${progress.pass} ${progress.step}` !== passKey) {
+        passKey = `${progress.pass} ${progress.step}`;
+        done.push([stage, seconds()]);
+        stage = passLabel(progress);
+      }
+      part = progress?.total ? Math.floor(progress.done / progress.total * 100) : null;
+      if (sketch) { base = sketch; draw(sketch); }
+      // A draft needs a sketch under it, to fill the points the map has not reached yet.
+      if (progress?.pass === 'map' && base && progress.done > drafted) {
+        const draft = await loadDraft(base).catch(() => null);
+        if (!waiting) return;
+        if (draft) { drafted = draft.done; draw(draft); }
+      }
+      tick();
+      poll = setTimeout(look, 1000);
+    };
+    // The server removes the sketch and the progress of the run before as it takes this one: ask a little later.
+    poll = setTimeout(look, 1000);
     let finished = false, stopped = false;
     try {
       stopped = !!(await ended())?.stopped;
@@ -2477,8 +2524,8 @@
     $('numbers').classList.remove('stale');
     $('numbers').inert = false;
     if (finished) {
-      // A small area at a coarse detail has no sketch before its map: the game's start and the map end together.
-      done.push([stage === text.steps.start ? last : stage, seconds()]);
+      // A small area ends before the first look at its progress: the game's start and the map end together.
+      done.push([stage === text.steps.start ? text.steps.last(run.detail) : stage, seconds()]);
       said = text.done(text.duration(seconds()));
       const work = await fetch('/preview/data/timing.json').then(r => r.ok ? r.json() : null).catch(() => null);
       learnPace(run.samples, run.detail, seconds(), work ? work.workMillis / 1000 : null);
