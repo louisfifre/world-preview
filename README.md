@@ -23,6 +23,7 @@ It was written while tuning a modpack's terrain, where every try used to mean st
 
 - **Figures for the question asked.** Three figures lead: the share of flat land, the width of a typical flat zone, the width of a typical biome. Flat means level ground among level ground: 2 blocks at most to the neighbour points, for at least 5 of the 9 points around. A river does not cut a flat zone.
 - **What moved since the run before.** After a second run over the same area, a column shows the change of each figure.
+- **How the figures moved over many runs.** The History tab, beside In figures, draws a small line per figure (the three of the goal, the sea and the high land) over the last runs on the same area at the same detail, oldest left. A dashed hairline marks where the seed changed; pointing at a run says what it changed from the one before. The browser keeps the last 60 maps that came to the screen.
 - **Which biomes are missing.** The biomes present are counted against all the generator can place at the surface, and the ones the area does not hold are named at the end of the list.
 
 <img src="docs/media/board-biomes.png" alt="Three biomes shown alone on the map, the others stepped back to grey, beside the list of biomes with their typical width and their share." width="100%">
