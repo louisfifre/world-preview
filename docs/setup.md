@@ -50,9 +50,13 @@ A page cannot start a program or read a file, so `serve.ps1` is the small local 
 | `POST /api/preview/export/<name>/<file>` | Writes one file of an export into `<Exports>\<name>`, the exports folder being `-Exports` of `serve.ps1` (`run\exports` by default): a picture of a view (`biomes.png`, `height-3d.png`, `structures.png`…), of the part of the cut on screen (`section.png`), or `export.json`, the settings and what the page measured. |
 | `POST /api/preview/export/<name>/open` | Opens that export's folder in the file explorer, which a page cannot do itself. Only a folder of the exports folder, and only one that exists. |
 | `GET /preview/data/<file>` | The files of the last run, the sketch, the cuts, the ore rules and the structure starts included. |
-| `GET /api/ping` | The page pings every 2 seconds; the server stops about 90 seconds after the pings stop, never during a run. The answer says when `page/preview.html` last changed: an open window reloads by itself on a change, and comes back with its seed, area, detail, slider values, view, choices and open groups. The zoom of the map, the place of the cut and the 3D camera start again. |
+| `GET /api/ping` | The page pings every 2 seconds; the server stops about 90 seconds after the pings stop, never during a run. That is only the fallback for a window the server cannot follow (see below). The answer says when `page/preview.html` last changed: an open window reloads by itself on a change, and comes back with its seed, area, detail, slider values, view, choices and open groups. The zoom of the map, the place of the cut and the 3D camera start again. |
 
-The run goes on a background thread, so the server answers the page's other requests meanwhile, the sketch among them. Quitting from the icon stops a run under way, its Java included. If the port is already taken, the script only opens a window on the server that holds it.
+The run goes on a background thread, so the server answers the page's other requests meanwhile, the sketch among them.
+
+The window is the application. It opens on a browser profile of its own (`run\browser`), which makes it a browser process of its own: the server watches that process and quits as soon as the window closes, stopping a run under way, its Java included. The page asks before closing on a run. A profile of its own also keeps the person's browser apart: on a shared profile reached by another path (a portable install links its own into the default place), the browser they opened next found its profile locked and showed no window. If the port is already taken, the script brings the window of the server that holds it to the front, or opens one on it.
+
+Another page can show the preview inside its own window, in an iframe: it starts `serve.ps1 -NoWindow -ParentPid <its own process>`, and the server stops when that process ends. Inside a frame, the page tells its host where a run stands with `postMessage`: `{ source: 'world-preview', state }`, the state being `running`, `ready`, `failed` or `idle`. The host then asks before closing on a run, and the page leaves that to it.
 
 ## Looking at the page without opening it
 

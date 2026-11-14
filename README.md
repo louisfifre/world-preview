@@ -69,7 +69,7 @@ The preview runs a Minecraft server of its own on your machine, and Minecraft as
 
 The sentence on the page gives the full path of the file it looks for.
 
-The page opens as a window of its own, and an icon sits in the notification area while it runs: amber while a map is computed, a notification when it is ready or has failed, and a menu to reopen the window or to quit. Everything stops by itself about 90 seconds after the window closes.
+The page opens as a window of its own, and that window is the whole application: closing it stops everything, a map being computed included (the page asks first). Opening it again while it runs brings that window back. It runs on a browser profile of its own, in `run\browser`, so it never touches your own browser, its tabs or its sign-ins.
 
 The chosen folder is kept in `run\pack.txt`; delete that file to be asked again. Nothing is ever written to the game folder: its mods and config are copied into the preview's own.
 
@@ -121,7 +121,7 @@ Most of the first sketch's wait is the server start. A seed run for the first ti
 - A structure is the point where it would start, not what it covers, and nothing of what a real chunk does to it later. Compared once with a real world of the same pack: the 111 starts its chunks held were all at the point given, 43 of them one chunk aside, the centre of a first piece that lies next to its start chunk.
 - The ores of a cut are a play of the rules on the real ground, not the blocks a world would hold: compared once with real chunks, it gave a fifth to a half more ore. It compares one setting with another.
 - The sketches skip the aquifers (the game's underground water and lava) and read fewer points: close to the full map, not proven exact.
-- Windows only: the scripts lean on PowerShell, the Windows registry to find the browser, and Windows Forms for the tray icon.
+- Windows only: the scripts lean on PowerShell, and the Windows registry to find the browser (Brave or Edge).
 - One run at a time on a machine: a second one waits for the first.
 - A game folder may hold mods made for the game's window only. Fabric leaves them alone on the preview's server when they say so; one that does not could stop it. Seen working with a folder of five mods, not with a large pack.
 
