@@ -715,6 +715,16 @@
   let inRun = null;       // the seed, span and values of the run under way
   let queued = null;      // the run to start once the one under way has stopped
   let trouble = '';       // what went wrong; it stays until the next attempt
+  let reloading = false;  // the page takes its new file by itself (see the ping): not a close to ask about
+
+  // Closing the window quits, and stops a run under way: the page asks first. Inside another page's
+  // window (a launcher can show the preview so), it tells its host where a run stands instead, and the
+  // host asks, since closing is the host's window closing.
+  const framed = window.parent !== window;
+  const tell = state => { if (framed) window.parent.postMessage({ source: 'world-preview', state }, '*'); };
+  addEventListener('beforeunload', event => {
+    if (busy && !framed && !reloading) { event.preventDefault(); event.returnValue = ''; }
+  });
   let said = '';          // how the last run ended, when it did not go wrong
   let exporting = false;  // pictures are being taken: the map is drawn whole, whatever is chosen
   // Grid points per side, one every 16 blocks whatever the width, so the measures keep their meaning.
@@ -2438,6 +2448,7 @@
   async function follow(ended, run, already = 0) {
     trouble = said = '';
     busy = true;
+    tell('running');
     inRun = run;
     // While the run is under way, the button stops it, or starts another in its place.
     $('generate').disabled = false;
@@ -2518,6 +2529,7 @@
     if (!finished) world = old;
     $('note').textContent = world ? '' : text.noPreview;
     busy = false;
+    tell(finished ? 'ready' : trouble ? 'failed' : 'idle');
     $('generate').textContent = text.generate;
     $('generate').classList.remove('stop');
     $('frame').classList.remove('busy');
@@ -2731,6 +2743,7 @@
         open: Object.fromEntries(Object.entries(groups).map(([key, group]) => [key, group.button.getAttribute('aria-expanded') === 'true'])),
       }));
     } catch { }
+    reloading = true;
     location.reload();
   };
   const ping = () => fetch('/api/ping').then(r => r.json()).then(({ page }) => {

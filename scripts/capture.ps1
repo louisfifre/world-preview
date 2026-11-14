@@ -121,7 +121,7 @@ function Send-Cdp($socket, [string]$method, $params = @{}) {
 
 $server = if ($needsServer) {
     Start-Process pwsh -PassThru -WindowStyle Hidden -ArgumentList '-NoProfile', '-File',
-        "`"$PSScriptRoot\serve.ps1`"", '-NoWindow', '-NoTray', '-Port', $Port,
+        "`"$PSScriptRoot\serve.ps1`"", '-NoWindow', '-Port', $Port,
         '-Pack', "`"$Pack`"", '-Dir', "`"$Dir`"", '-Out', "`"$PreviewOut`""
 }
 # Its own profile folder: the owner's browser, its tabs and its sign-ins stay out of it.
