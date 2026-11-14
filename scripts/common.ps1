@@ -104,6 +104,57 @@ function Find-AppBrowser {
     }
 }
 
+# The page's window is the application: it opens on a browser profile of its own, so it never touches the
+# person's own browser. Sharing their profile meant joining it by the right path: the same folder reached by
+# another one (a portable install links its own into the default place) locks the browser the person opens
+# next out of its own profile, and it then shows no window at all. A profile of its own is also a browser
+# process of its own, which ends when the window closes: the server watches it and quits with it.
+function Get-AppBrowserProcess([string]$ProfileDir) {
+    # The browser's main process for this profile: the only one without --type= in its command line.
+    $browser = Find-AppBrowser
+    if (-not $browser) { return }
+    Get-CimInstance Win32_Process -Filter "Name='$(Split-Path $browser -Leaf)'" |
+        Where-Object { $_.CommandLine -and $_.CommandLine -notmatch '--type=' -and
+            $_.CommandLine.IndexOf($ProfileDir, [StringComparison]::OrdinalIgnoreCase) -ge 0 } |
+        ForEach-Object { Get-Process -Id $_.ProcessId -ErrorAction SilentlyContinue } |
+        Select-Object -First 1
+}
+
+function Show-AppWindow([string]$ProfileDir) {
+    # Brings the window already open on this profile to the front; false when there is none. Opening the
+    # application twice then shows the one window rather than a second.
+    $process = Get-AppBrowserProcess $ProfileDir
+    if (-not $process -or $process.MainWindowHandle -eq [IntPtr]::Zero) { return $false }
+    if (-not ('AppWindow.Native' -as [type])) {
+        Add-Type -Namespace AppWindow -Name Native -MemberDefinition @'
+[DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr window);
+[DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr window, int how);
+[DllImport("user32.dll")] public static extern bool IsIconic(IntPtr window);
+'@
+    }
+    # 9 restores a window from the taskbar; a window already on screen keeps its size and place.
+    if ([AppWindow.Native]::IsIconic($process.MainWindowHandle)) { $null = [AppWindow.Native]::ShowWindow($process.MainWindowHandle, 9) }
+    $null = [AppWindow.Native]::SetForegroundWindow($process.MainWindowHandle)
+    return $true
+}
+
+function Open-AppWindow([string]$Url, [string]$Size, [string]$ProfileDir) {
+    # Returns the browser process the window lives in, or nothing when no browser can show a bare window
+    # and the page went to the default browser instead: the pings alone then say when it is closed.
+    $browser = Find-AppBrowser
+    if (-not $browser) { Start-Process $Url; return }
+    $null = New-Item -ItemType Directory -Force $ProfileDir
+    # A new profile would greet its first start with the browser's welcome and a question about the default browser.
+    Start-Process $browser -ArgumentList "--app=$Url", "--window-size=$Size", "--user-data-dir=`"$ProfileDir`"", '--no-first-run', '--no-default-browser-check'
+    # The process started above hands the window over and leaves when the profile already runs: the one to
+    # watch is the profile's own, found once it is up.
+    for ($i = 0; $i -lt 40; $i++) {
+        $process = Get-AppBrowserProcess $ProfileDir
+        if ($process) { return $process }
+        Start-Sleep -Milliseconds 250
+    }
+}
+
 function Test-Java([string]$Exe) {
     # Minecraft 26.x needs Java 25. java prints its version on the error stream, which Windows PowerShell
     # turns into errors: they must not stop the script here.

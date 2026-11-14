@@ -6,10 +6,10 @@ Opens the world preview page in a bare browser window, and serves it.
 A web page cannot start a program or read a file, so this script is the small local server behind
 the page. It serves page/preview.html on localhost only, gives it the pack's Tectonic values, runs
 preview.ps1 in the background when the page asks for a run, and hands the page the results.
-The page pings while its window is open; the server stops once the pings stop.
-
-An icon in the notification area says the server is there, turns amber while a preview is
-computed, and tells when one is ready or has failed.
+The window is the application: it opens on a browser profile of its own (run\browser), and closing it
+stops the server and any preview being computed. Opening it again while it runs shows that window.
+The page also pings while it is open, so a server whose window it cannot follow (another page holds
+the preview, or no browser could show a bare window) stops once the pings stop.
 
 .PARAMETER Pack
 The folder holding the pack's pack.toml, as in preview.ps1. Read from WORLD_PREVIEW_PACK when omitted.
@@ -30,10 +30,11 @@ The local port. A second server on another port (the capture script starts one) 
 first without touching it.
 
 .PARAMETER NoWindow
-Serve without opening the browser window (for tests).
+Serve without opening the browser window: for tests, and for a page that shows the preview inside its own.
 
-.PARAMETER NoTray
-Serve without the icon in the notification area (for tests and for the capture script).
+.PARAMETER ParentPid
+Stop when that process ends: the program that started this server and shows the preview in its own
+window ends it so, rather than leaving it to wait for the pings to stop.
 #>
 param(
     [string]$Pack,
@@ -42,7 +43,7 @@ param(
     [string]$Exports,
     [int]$Port = 25590,
     [switch]$NoWindow,
-    [switch]$NoTray
+    [int]$ParentPid
 )
 
 . "$PSScriptRoot\common.ps1"
@@ -50,31 +51,20 @@ param(
 $Origin  = "http://localhost:$Port"
 $Page    = Join-Path $RepoRoot 'page\preview.html'
 $Size    = '1400,940'
-$IdleMs  = 90000   # the page pings every 10 s; a hidden window may be slowed down by the browser
+$BrowserProfile = Join-Path $RepoRoot 'run\browser'
+$IdleMs  = 90000   # the page pings every 2 s; a hidden window may be slowed down by the browser
 
 function Open-Window {
     if ($NoWindow) { return }
-    $browser = Find-AppBrowser
-    if (-not $browser) { Start-Process "$Origin/"; return }
-    $arguments = "--app=$Origin/", "--window-size=$Size"
-    # A browser that is already running must be joined under the profile folder it was started with. The same folder
-    # reached by another path (a portable install links its own into the default place) is taken for a second
-    # browser on a locked profile, and that one exits without a window.
-    $running = Get-CimInstance Win32_Process -Filter "Name='$(Split-Path $browser -Leaf)'" |
-        Where-Object { $_.CommandLine -notmatch '--type=' -and $_.CommandLine -notmatch '--headless' } |
-        Select-Object -First 1
-    if ($running -and $running.CommandLine -match '--user-data-dir=(?:"([^"]+)"|(\S+))') {
-        $arguments += "--user-data-dir=`"$($Matches[1])$($Matches[2])`""
-    }
-    Start-Process $browser -ArgumentList $arguments
+    Open-AppWindow "$Origin/" $Size $BrowserProfile
 }
 
 $listener = [Net.HttpListener]::new()
 $listener.Prefixes.Add("$Origin/")
 try { $listener.Start() }
 catch {
-    # The port is taken: a preview server is already running, so only show its window.
-    Open-Window
+    # The port is taken: a preview server is already running, so only show its window, or open one on it.
+    if (-not $NoWindow -and -not (Show-AppWindow $BrowserProfile)) { $null = Open-Window }
     return
 }
 
@@ -220,10 +210,6 @@ function Complete-Preview {
     $script:LastFailure = $failure
     $script:LastStopped = [bool]$stopped
     $shell.Dispose()
-    if ($tray) {
-        $tray.Busy = $false
-        if (-not $stopped) { $tray.Notify = if ($failure) { $TrayText.failed } else { $TrayText.ready } }
-    }
     # The page may have been closed meanwhile: nobody to answer then.
     try {
         if ($failure) { Send-Reply $context 500 (ConvertTo-Json @{ error = $failure }) }
@@ -243,23 +229,23 @@ function Test-PreviewEnded {
     return $true
 }
 
-Open-Window
-$tray = if ($NoTray) { $null } else { Start-Tray }
+$window = Open-Window
+# A parent already gone would leave this server waiting for pings from a page that no longer exists.
+$parent = if ($ParentPid) { Get-Process -Id $ParentPid -ErrorAction SilentlyContinue }
+if ($ParentPid -and -not $parent) { $listener.Stop(); return }
 try {
     :serve while ($true) {
         $null = Test-PreviewEnded
         $pending = $listener.GetContextAsync()
-        # Waits in short slices, so a choice made in the tray menu and the end of a preview are answered at once.
+        # Waits in short slices, so a closed window and the end of a preview are answered at once.
         $idle = [Diagnostics.Stopwatch]::StartNew()
         while (-not $pending.Wait(300)) {
             if (Test-PreviewEnded) { $idle.Restart() }
+            # Closing the window quits, a preview under way too: the page asked first.
+            if ($window -and $window.HasExited) { break serve }
+            if ($parent -and $parent.HasExited) { break serve }
             # A preview under way keeps the server up: the time without pings counts from its end.
             if (-not $Run -and $idle.ElapsedMilliseconds -gt $IdleMs) { break serve }
-            if ($tray -and $tray.Ask) {
-                $ask = $tray.Ask; $tray.Ask = $null
-                if ($ask -eq 'quit') { break serve }
-                Open-Window
-            }
         }
         $context = $pending.Result
         # One bad request answers 500 and the server carries on.
@@ -335,7 +321,6 @@ try {
                     }
                     $Run = @{ Shell = $shell; Handle = $shell.BeginInvoke(); Context = $context
                               Seed = $seed; Samples = $samples; Detail = $detail; Tectonic = $asked; Started = Get-Date }
-                    if ($tray) { $tray.Busy = $true }
                 }
             }
             elseif ($path -eq '/api/preview/stop') {
@@ -374,11 +359,8 @@ try {
     }
 } finally {
     $listener.Stop()
-    # Let the icon's thread leave by itself. Ending the script while its timer still ticks stops that
-    # thread in the middle of a tick, which Windows shows as an error box ("The pipeline has been stopped").
-    if ($tray) { $tray.Stop = $true; $null = $tray.Done.WaitOne(3000) }
-    # Quitting stops the preview being computed: without a window or an icon, nobody could see it go on,
-    # nor stop it, and a wide one takes the machine for many minutes.
+    # Quitting stops the preview being computed: without a window, nobody could see it go on, nor stop it,
+    # and a wide one takes the machine for many minutes.
     if ($Run) {
         Stop-RunJava
         $null = $Run.Handle.AsyncWaitHandle.WaitOne()
