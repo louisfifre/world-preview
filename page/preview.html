@@ -15,8 +15,19 @@
   /* Two grounds, following the system: pure black, or a white that is almost white.
      Nothing else is filled and no line is coloured: what is current is underlined in the colour of
      the text. The map and the button are the only coloured surfaces of the page. */
+  /* Headings are in Monocraft, a pixel font in the spirit of the game's own, made by Idrees Hassan under the
+     SIL Open Font License 1.1 (https://github.com/IdreesInc/Monocraft): cut down to the characters a heading
+     uses, about 3 KB, and kept in this file so the page stays one file that works offline. Nothing of the
+     game's own font is used. The rest of the page is monospace, as a command line is. */
+  @font-face {
+    font-family: "Monocraft";
+    font-display: block;
+    src: url(data:font/woff;base64,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) format("woff");
+  }
   :root {
     color-scheme: dark;
+    --mono: "Cascadia Mono", Consolas, ui-monospace, monospace;
+    --pixel: "Monocraft", var(--mono);
     --ground: #000;
     --line: #2a2a2a;
     --text: #ececec;
@@ -42,29 +53,47 @@
   html, body { height: 100%; }
   body {
     margin: 0;
-    padding: 24px 28px;
     overflow: hidden;
-    display: grid;
-    grid-template-columns: 310px minmax(0, 1fr) 320px;
-    gap: 28px;
+    display: flex;
+    flex-direction: column;
     background: var(--ground);
     color: var(--text);
-    font: 14px/1.4 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+    font: 13px/1.45 var(--mono);
     user-select: none;
+  }
+  /* The page is one column of a capped width, centred: a wide window adds ground on both sides rather than
+     stretching the map's neighbours apart. */
+  #page {
+    flex: 1; min-height: 0; width: 100%; max-width: 1480px; margin: 0 auto;
+    padding: 18px 28px 22px;
+    display: grid;
+    grid-template-columns: 320px minmax(0, 1fr) 330px;
+    gap: 28px;
   }
   /* A narrow window takes its width from the map first, then from the list on the right. The left
      column keeps room for a hint under each slider on one or two lines: without them a slider is only a name. */
   @media (max-width: 1250px) {
-    body { grid-template-columns: 284px minmax(0, 1fr) 264px; gap: 24px; padding: 22px 22px; }
+    #page { grid-template-columns: 296px minmax(0, 1fr) 280px; gap: 24px; padding: 16px 22px 20px; }
   }
   @media (max-width: 1100px) {
-    body { grid-template-columns: 262px minmax(0, 1fr) 250px; gap: 20px; padding: 18px 16px; }
+    #page { grid-template-columns: 272px minmax(0, 1fr) 262px; gap: 20px; padding: 14px 16px 18px; }
     .choice { gap: 14px; }
   }
-  /* One scale for the whole page, four sizes: 16 for a title, 14 for what is read, 13 for rows and labels,
-     12 for notes and the heads of columns. A title is larger and heavier than what it heads and has room
-     above it: no capitals, no second colour. One step above, 18, is kept for the figures that answer the goal. */
-  h2 { margin: 0 0 8px; font-size: 16px; line-height: 1.25; font-weight: 600; }
+  /* The toolbar: what the map shows, then its shape, in one strip at the top of the window, separated by
+     hairlines. The choice on screen is in the text colour on a faint ground. Inside the launcher's window the
+     launcher draws the same strip in its own bar, so the page leaves its own out (see the messages below). */
+  #toolbar { flex: none; display: flex; justify-content: center; padding: 10px 16px 0; }
+  body.framed #toolbar { display: none; }
+  .strip { display: flex; align-items: center; gap: 2px; padding: 3px; border: 1px solid var(--line); border-radius: 8px; }
+  .strip button { height: 28px; padding: 0 10px; border-radius: 5px; color: var(--muted); font-size: 12px; white-space: nowrap; }
+  .strip button:hover:not(:disabled) { color: var(--text); }
+  .strip button[aria-pressed=true] { color: var(--text); background: var(--line); }
+  .strip button:disabled { opacity: 0.35; }
+  .strip .sep { flex: none; width: 1px; height: 16px; margin: 0 5px; background: var(--line); }
+  /* One scale for the whole page: 16 for a title, 13 for what is read, 12 for notes and the heads of
+     columns. A title is in the pixel font, larger than what it heads, with room above it: no capitals, no
+     second colour. The figures that answer the goal are in bold at the titles' size. */
+  h2, .heading { margin: 0 0 8px; font: 400 16px/1.25 var(--pixel); font-synthesis: none; }
   .column { min-height: 0; display: flex; flex-direction: column; gap: 22px; }
   .muted { color: var(--muted); }
   .num { font-variant-numeric: tabular-nums; }
@@ -86,7 +115,7 @@
   /* Left: what to try. */
   input[type=text] {
     width: 100%; padding: 6px 0; border-bottom: 1px solid var(--line); border-radius: 0;
-    font-size: 16px; user-select: text;
+    font-size: 14px; user-select: text;
   }
   input[type=text]:focus { outline: none; border-color: var(--text); }
   input::placeholder { color: var(--muted); }
@@ -98,14 +127,14 @@
   /* Beside the choices, what acts on them: quieter, underlined like a link. */
   .choice button.action { font-size: 13px; text-decoration: underline; text-underline-offset: 3px; }
   #profiles { flex-wrap: wrap; gap: 0 18px; }
-  #profiles input { width: 130px; padding: 4px 0; font-size: 14px; }
+  #profiles input { width: 130px; padding: 4px 0; font-size: 13px; }
   .setting output span { cursor: pointer; }
   .setting output span:hover { color: var(--text); text-decoration: underline; }
   /* The sliders come in groups that open and close. The view on screen opens the groups that move what it
      shows; a group opened or closed by hand stays so until the view changes. Its title row says how many of
      its values left the pack's, so a closed group hides no change. The title stays in sight while its own
      sliders scroll under it. */
-  .group > h2 { position: sticky; top: 0; z-index: 1; margin: 0; background: var(--ground); border-top: 1px solid var(--line); }
+  .group > h2 { position: sticky; top: 0; z-index: 1; margin: 0; font: 600 13px/1.25 var(--mono); background: var(--ground); border-top: 1px solid var(--line); }
   .group:last-of-type { border-bottom: 1px solid var(--line); }
   .group > h2 button {
     width: 100%; display: flex; align-items: baseline; gap: 10px; padding: 13px 0 6px;
@@ -175,51 +204,73 @@
   .ore-row input:focus { outline: none; border-color: var(--text); }
   .ore-row button { padding: 0; color: var(--muted); }
   .ore-row button:hover { color: var(--text); }
-  /* What the button says, on two lines at most whatever it says, so a message never moves the sliders. */
-  #status {
-    flex: none; height: 36px; font-size: 13px; line-height: 18px; color: var(--muted); overflow: hidden; overflow-wrap: anywhere;
-    display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
-  }
+  /* What the button says, as many lines as it needs and none when it has nothing to say: the run block grows
+     upwards only, over the end of the settings' list, so nothing above it moves. */
+  #status { font-size: 12px; line-height: 18px; color: var(--muted); overflow-wrap: anywhere; }
+  #status:empty { display: none; }
   #status.trouble { color: var(--warn); }
-  #run { flex: none; display: flex; flex-direction: column; gap: 8px; }
-  /* How fine the map is, beside the button that computes it: each step says the wait it costs here. */
-  #details { flex-wrap: wrap; gap: 0 16px; font-size: 13px; }
-  #details > span { color: var(--muted); }
-  #details button small { margin-left: 5px; color: var(--muted); }
+  #run { flex: none; display: flex; flex-direction: column; gap: 10px; }
+  /* How fine the map is, beside the button that computes it: each detail says the wait it costs here, under
+     its name, so a long wait never pushes the next detail to a second line. */
+  #details { display: grid; grid-template-columns: auto repeat(3, minmax(0, 1fr)); gap: 0 14px; align-items: start; font-size: 12px; }
+  #details > span { padding: 4px 0; color: var(--muted); }
+  #details button { padding: 4px 0 3px; text-align: left; }
+  #details button small { display: block; color: var(--muted); }
   /* What the map on screen cannot show, for want of detail: still there, but out of reach. */
   .choice button:disabled { opacity: 0.35; }
-  #controls { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 22px; }
-  /* The column shows one thing at a time, the seed, the area or the settings, chosen at its top: the three
-     under each other left the sliders a sliver on a short window. */
-  #panels { flex: none; }
-  #panels button { font-weight: 600; }
-  [data-panel=span] output { grid-column: 1 / -1; }
-  #tuning { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 14px; }
+  #controls { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 18px; }
+  /* The world a run is made of, the seed and the width scanned, set once and together: two short rows. */
+  #world { flex: none; display: flex; flex-direction: column; gap: 10px; }
+  #world h2 { margin: 0; }
+  .row { display: grid; grid-template-columns: 7.5em minmax(0, 1fr); column-gap: 10px; align-items: baseline; }
+  .row > label { color: var(--muted); }
+  #world .setting { grid-template-columns: 7.5em minmax(0, 1fr); column-gap: 10px; }
+  #world .setting label { color: var(--muted); }
+  #world .setting output { text-align: right; }
+  #world .setting input, #world .setting small { grid-column: 1 / -1; }
+  #tuning { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 12px; }
+  #tuning h2 { margin: 0; }
   /* On a short window the spaces tighten a little, the button too. */
   @media (max-height: 800px) {
-    body { padding-top: 16px; padding-bottom: 16px; }
+    #page { padding-top: 12px; padding-bottom: 14px; }
     .column { gap: 16px; }
-    #controls { gap: 16px; }
+    #controls { gap: 14px; }
     #run { gap: 6px; }
-    #generate { height: 40px; padding-top: 6px; }
+    #generate, #stopRun { height: 40px; }
+    #generate { padding-top: 6px; }
   }
   /* The button always says what it does. When there is nothing to compute it turns to grey
      stone, and the line above it says why. Its texture is drawn by the script, 16 texels high. */
+  .go { flex: none; display: flex; gap: 8px; }
   #generate {
-    flex: none; height: 48px; padding: 9px 0 0; border-radius: 0; font-weight: 600; color: #fff;
-    background-size: auto 100%; image-rendering: pixelated;
+    flex: 1; height: 48px; padding: 9px 0 0; border-radius: 0; font-weight: 600; color: #fff;
+    background-image: var(--texture); background-size: auto 100%; image-rendering: pixelated;
     text-shadow: 2px 2px 0 rgb(0 0 0 / 0.6); box-shadow: inset 0 -3px 0 rgb(0 0 0 / 0.3);
   }
-  #generate:hover:not(:disabled) { filter: brightness(1.12); }
-  #generate:active:not(:disabled) { filter: brightness(0.9); }
+  #generate:hover:not(:disabled):not(.running) { filter: brightness(1.12); }
+  #generate:active:not(:disabled):not(.running) { filter: brightness(0.9); }
   #generate:disabled { filter: grayscale(1) brightness(0.5); }
-  /* While a run is under way the same button stops it: stone, but lit. */
-  #generate.stop:not(:disabled) { filter: grayscale(1) brightness(0.85); }
+  /* While a run is under way the button says so, and the grass grows over it from the left with the wait:
+     what is still to come is shaded. Stopping is the square beside it. */
+  #generate.running {
+    cursor: default;
+    background-image: linear-gradient(rgb(0 0 0 / 0.55), rgb(0 0 0 / 0.55)), var(--texture);
+    background-size: calc((1 - var(--share, 0)) * 100%) 100%, auto 100%;
+    background-position: right top, left top;
+    background-repeat: no-repeat, repeat;
+  }
+  #stopRun {
+    flex: none; width: 48px; height: 48px; display: grid; place-items: center; border-radius: 0;
+    border: 1px solid var(--track); color: var(--muted);
+  }
+  #stopRun:hover:not(:disabled) { color: var(--text); border-color: var(--text); }
+  #stopRun:disabled { opacity: 0.4; }
+  #stopRun svg { width: 16px; height: 16px; fill: currentColor; }
 
-  /* Middle: the map. Tabs, map and the lines under it hang off one square, so they stay one block. Room is
+  /* Middle: the map. The map and the lines under it hang off one square, so they stay one block. Room is
      kept under the square for two lines: what is under the pointer, and the steps of the last run. */
-  #stage { --under: 76px; flex: 1; min-height: 0; display: grid; place-items: start center; container-type: size; }
-  #frame { position: relative; margin-top: 40px; width: min(100cqw, 100cqh - 40px - var(--under)); aspect-ratio: 1; }
+  #stage { --under: 64px; flex: 1; min-height: 0; display: grid; place-items: start center; container-type: size; }
+  #frame { position: relative; width: min(100cqw, 100cqh - var(--under)); aspect-ratio: 1; }
   #flat, #map, #relief, #grid { position: absolute; inset: 0; width: 100%; height: 100%; }
   #relief canvas { display: block; width: 100%; height: 100%; }
   /* The flat map may be looked at closer: --k is how many times, --x and --y where its corner went, in widths of the square. */
@@ -252,28 +303,20 @@
   #note { position: absolute; inset: 0; display: grid; place-items: center; padding: 40px; text-align: center; color: var(--muted); pointer-events: none; }
   /* While the sketch of a run is on the map, the figures and the list still describe the map before: they step back. */
   #numbers.stale { opacity: 0.3; transition: opacity 200ms; }
-  #tabs { position: absolute; left: 0; right: 0; bottom: calc(100% + 12px); }
-  /* The section is not a map: it stands a little apart from the views of the map. */
-  #tabs [data-view=section] { position: relative; margin-left: 16px; }
-  #tabs [data-view=section]::before { content: ""; position: absolute; left: -19px; top: 9px; height: 13px; border-left: 1px solid var(--line); }
-  #tabs .apart { margin-left: auto; }
-  /* The tabs hold on one line over the narrowest map: one step smaller there, and a little closer. */
-  @media (max-width: 1100px) {
-    #tabs { gap: 12px; font-size: 13px; }
-    #tabs [data-view=section] { margin-left: 10px; }
-    #tabs [data-view=section]::before { left: -12px; top: 8px; }
-  }
-  #under { position: absolute; left: 0; right: 0; top: calc(100% + 12px); display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+  #under { position: absolute; left: 0; right: 0; top: calc(100% + 10px); display: flex; flex-direction: column; gap: 6px; font-size: 12px; }
   #under .choice { gap: 18px; }
   #probe { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   /* The steps of a run, under what it draws: done with the second it ended at, the one under way, and a
      hairline that fills as the wait goes. They stay after the run, to see where the time went. Down here they
-     cost the sliders nothing, and the eye is on the map anyway while its sketches land. */
-  #steps { display: flex; flex-wrap: wrap; gap: 2px 16px; font-size: 12px; color: var(--muted); }
-  #steps .bar { flex: 0 0 100%; height: 1px; margin-bottom: 4px; background: linear-gradient(var(--text), var(--text)) 0 0 / calc(var(--share) * 100%) 100% no-repeat, var(--line); }
-  .step { white-space: nowrap; }
-  .step b { display: inline-block; width: 12px; font-weight: 400; }
-  .step.now { color: var(--text); }
+     cost the sliders nothing, and the eye is on the map anyway while its sketches land. They hold one line:
+     short of room, the names of the steps done shorten first, their seconds and the step under way stay whole. */
+  #steps { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
+  #steps .bar { height: 1px; background: linear-gradient(var(--text), var(--text)) 0 0 / calc(var(--share) * 100%) 100% no-repeat, var(--line); }
+  #steps .line { display: flex; gap: 14px; min-width: 0; overflow: hidden; white-space: nowrap; }
+  .step { flex: 0 1 auto; min-width: 0; display: flex; gap: 6px; }
+  .step .label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .step b, .step .took { flex: none; font-weight: 400; }
+  .step.now { flex: none; color: var(--text); }
   /* Where the last export went, in the steps' place once they are done: a sentence in the status line was
      missed. It stays until it is closed, or until a run or an export takes the place again. The path can be
      selected and copied. */
@@ -283,7 +326,7 @@
   .saved button { padding: 0; font-size: 12px; text-decoration: underline; text-underline-offset: 3px; color: var(--muted); }
   .saved button:hover { color: var(--text); }
   /* The section takes the square's place: the whole cut drawn small, then the part looked at, at true scale. */
-  #frame.cut { width: 100cqw; height: calc(100cqh - 40px - var(--under)); aspect-ratio: auto; }
+  #frame.cut { width: 100cqw; height: calc(100cqh - var(--under)); aspect-ratio: auto; }
   #cut { position: absolute; inset: 0; display: flex; flex-direction: column; gap: 8px; }
   #nav { flex: none; position: relative; height: 56px; cursor: pointer; touch-action: none; border-bottom: 1px solid var(--line); }
   #navCanvas { position: absolute; inset: 0; width: 100%; height: 100%; }
@@ -299,17 +342,18 @@
   #numbers.cut > .rule { margin-top: 0; padding-top: 0; border-top: 0; }
   #listBlock { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 6px; }
   .figures { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 5px 14px; align-items: baseline; }
-  .figures > span[class=""] { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* A name is read whole: on a narrow column it takes a second line rather than losing its end. */
+  .figures > span[class=""] { min-width: 0; }
   .figures .head { font-size: 12px; color: var(--muted); text-align: right; }
   .figures .value { font-weight: 600; text-align: right; }
-  .figures .goal { font-size: 18px; }
+  .figures .goal { font-size: 16px; }
   .figures .before { color: var(--muted); text-align: right; }
   /* On the figures of the goal, what moved is the answer: it reads as strongly as the value. */
   .figures .goal-change { color: var(--text); font-weight: 600; }
   .figures .rule { grid-column: 1 / -1; height: 1px; margin: 6px 0; padding: 0; border: 0; background: var(--line); }
   /* The figures now, or how a few of them moved run after run: two words over the block, like the left column's. */
   #figureTabs { margin-bottom: 8px; }
-  #figureTabs button { font-weight: 600; }
+  #figureTabs button { font: 400 16px/1.25 var(--pixel); font-synthesis: none; }
   /* One small line per figure, oldest run left: the eye reads its slope, the number beside its name says
      where the run pointed at stands. */
   #history { display: flex; flex-direction: column; gap: 8px; cursor: crosshair; }
@@ -359,28 +403,38 @@
   .legend { display: grid; grid-template-columns: 12px minmax(0, 1fr) auto auto; gap: 8px; font-size: 12px; color: var(--muted); }
   .legend .width { min-width: 8ch; text-align: right; }
   .legend .share { min-width: 6ch; text-align: right; }
+  /* The figures a step smaller on a narrower column, the goal's figures with them. */
+  @media (max-width: 1250px) {
+    .figures { gap: 5px 10px; font-size: 12px; }
+    .figures .goal { font-size: 14px; }
+  }
   @media (max-width: 1100px) {
-    /* The figures keep each name on one line: a step smaller, the goal's figures down to the titles' size. */
-    .figures { gap: 5px 10px; font-size: 13px; }
-    .figures .goal { font-size: 16px; }
     .biome .width, .legend .width { min-width: 7ch; }
     .biome .share, .legend .share { min-width: 5ch; }
   }
 </style>
 </head>
 <body>
+  <nav id="toolbar"><div class="strip" id="tabs" role="group"></div></nav>
+
+  <main id="page">
   <section class="column">
     <div id="controls">
-      <div id="panels" class="choice"></div>
-      <div data-panel="seed">
-        <input type="text" id="seed" maxlength="64" spellcheck="false">
+      <div id="world">
+        <h2 data-text="world"></h2>
+        <div class="row">
+          <label for="seed" data-text="seed"></label>
+          <input type="text" id="seed" maxlength="64" spellcheck="false">
+        </div>
+        <div class="setting">
+          <label for="area" data-text="span"></label>
+          <output class="num" id="areaValue" for="area"></output>
+          <input type="range" id="area" min="256" max="4096" step="256">
+          <small id="areaHint"></small>
+        </div>
       </div>
-      <div class="setting" data-panel="span">
-        <output class="num" id="areaValue" for="area"></output>
-        <input type="range" id="area" min="256" max="4096" step="256">
-        <small id="areaHint"></small>
-      </div>
-      <div id="tuning" data-panel="profiles">
+      <div id="tuning" class="rule">
+        <h2 data-text="profiles"></h2>
         <div id="profiles" class="choice"></div>
         <div id="settings" class="scroll"></div>
       </div>
@@ -388,14 +442,16 @@
     <div id="run">
       <div id="status" role="status"></div>
       <div id="details" class="choice"></div>
-      <button id="generate" data-text="generate"></button>
+      <div class="go">
+        <button id="generate" data-text="generate"></button>
+        <button id="stopRun" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h14v14H5z"/></svg></button>
+      </div>
     </div>
   </section>
 
   <section class="column">
     <div id="stage">
       <div id="frame">
-        <div id="tabs" class="choice"></div>
         <div id="flat">
           <canvas id="map"></canvas>
           <div id="grid" hidden></div>
@@ -436,15 +492,16 @@
       <div id="biomes" class="scroll"></div>
     </div>
   </section>
+  </main>
 
 <script type="module">
   // Every sentence the page shows, in one place.
   const text = {
+    world: 'World',
     seed: 'Seed',
     seedRandom: 'random',
     span: 'Scanned area',
     spanValue: v => `${v} blocks`,
-    spanHint: wait => `Takes about ${wait}.`,
     spanCoarse: 'Past 32,768 blocks, a point every 32 blocks at the finest.',
     duration: s => s < 60 ? `${s} s` : `${Math.floor(s / 60)} min${s % 60 ? ` ${s % 60} s` : ''}`,
     generate: 'Generate preview',
@@ -453,7 +510,8 @@
     detailHint: 'Blocks between two points of the map. A coarser map comes sooner, without the flat land, the structures and the section.',
     needsFull: 'Needs the 16-block detail: generate the map again at 16 blocks.',
     upToDate: 'The map shows these settings.',
-    stop: 'Stop',
+    generating: 'Generating…',
+    stop: 'Stop the run',
     running: (elapsed, about) => `${elapsed} of about ${about}.`,
     measuring: elapsed => `${elapsed}. A first run at this detail: its time is kept for the next ones.`,
     steps: {
@@ -681,23 +739,9 @@
 
   for (const el of document.querySelectorAll('[data-text]')) el.textContent = text[el.dataset.text];
 
-  // The settings first: they are what is worked on, the seed and the area are set once. A choice made by
-  // hand is kept by the browser; one asked in the address, for a picture, is not.
-  function showPanel(key, keep) {
-    if (!document.querySelector(`[data-panel="${key}"]`)) key = 'profiles';
-    for (const el of document.querySelectorAll('[data-panel]')) el.hidden = el.dataset.panel !== key;
-    for (const tab of $('panels').children) tab.setAttribute('aria-pressed', tab.dataset.key === key);
-    if (keep) try { localStorage.setItem('preview.panel', key); } catch { }
-  }
-  for (const key of ['seed', 'span', 'profiles']) {
-    const tab = document.createElement('button');
-    tab.textContent = text[key];
-    tab.dataset.key = key;
-    tab.onclick = () => showPanel(key, true);
-    $('panels').append(tab);
-  }
-  { let kept = null; try { kept = localStorage.getItem('preview.panel'); } catch { } showPanel(kept || 'profiles'); }
   $('seed').placeholder = text.seedRandom;
+  $('stopRun').title = text.stop;
+  $('stopRun').setAttribute('aria-label', text.stop);
   $('filter').placeholder = text.filter;
   const scheme = matchMedia('(prefers-color-scheme: dark)');
 
@@ -727,7 +771,7 @@
     }
     return tile.toDataURL();
   }
-  $('generate').style.backgroundImage = `url(${blockTexture(96)})`;
+  $('generate').style.setProperty('--texture', `url(${blockTexture(96)})`);
 
   // ---------- the settings column ----------
 
@@ -747,6 +791,20 @@
   // host asks, since closing is the host's window closing.
   const framed = window.parent !== window;
   const tell = state => { if (framed) window.parent.postMessage({ source: 'world-preview', state }, '*'); };
+  // In a host's window the toolbar is the host's: the page leaves its own out, sends the host its tabs as
+  // they stand each time they change, and takes a tab the host's bar was clicked on as a click of its own.
+  document.body.classList.toggle('framed', framed);
+  addEventListener('message', event => {
+    if (!framed || event.source !== window.parent || event.data?.source !== 'host' || typeof event.data.tab !== 'string') return;
+    for (const tab of $('tabs').querySelectorAll('button')) if (tab.dataset.view === event.data.tab && !tab.disabled) tab.click();
+  });
+  const tellTabs = () => {
+    if (!framed) return;
+    const tabs = [...$('tabs').children].map(el => el.tagName === 'BUTTON'
+      ? { key: el.dataset.view, label: el.textContent, pressed: el.getAttribute('aria-pressed') === 'true', disabled: el.disabled, hidden: el.hidden, title: el.title }
+      : { sep: true, hidden: el.hidden });
+    window.parent.postMessage({ source: 'world-preview', tabs }, '*');
+  };
   addEventListener('beforeunload', event => {
     if (busy && !framed && !reloading) { event.preventDefault(); event.returnValue = ''; }
   });
@@ -781,12 +839,13 @@
   // The button keeps its name. It is greyed when there is nothing new to compute, and the line
   // above it says why: the map already shows these settings, or a run is under way.
   function showButton() {
+    $('stopRun').hidden = !busy;
     if (busy) {
-      // While a run is under way the button stops it, unless a setting moved: then it starts the new
-      // run in its place, the running one cut first, in one press.
+      // While a run is under way the button says so, and the square beside it stops it. Once a setting
+      // moved, the button starts the new run in its place, the running one cut first, in one press.
       const again = !sameAs(inRun);
-      $('generate').textContent = again ? text.generate : text.stop;
-      $('generate').classList.toggle('stop', !again);
+      $('generate').textContent = again ? text.generate : text.generating;
+      $('generate').classList.toggle('running', !again);
       return;
     }
     const same = sameAs(shown);
@@ -804,8 +863,8 @@
     area.value = samples;
     if (samples > widest && detail === 16) detail = 32;
     $('areaValue').textContent = text.spanValue(num(samples * 16));
-    const wait = about(samples);
-    $('areaHint').textContent = [wait == null ? '' : text.spanHint(text.duration(wait)), samples > widest ? text.spanCoarse : ''].filter(Boolean).join(' ');
+    // The wait it costs is said under each detail, beside the button.
+    $('areaHint').textContent = samples > widest ? text.spanCoarse : '';
     showDetails();
     showButton();
   }
@@ -2516,13 +2575,15 @@
   function showTabs() {
     if (coarseMap() && needsFull.includes(view)) { view = 'biomes'; openGroupsFor(view); }
     for (const tab of $('tabs').children) {
+      // A cut has one shape only: the shapes and the hairline before them step out.
+      if (tab.tagName !== 'BUTTON') { tab.hidden = view === 'section'; continue; }
       const key = tab.dataset.view;
       tab.disabled = coarseMap() && needsFull.includes(key);
       tab.title = tab.disabled ? text.needsFull : '';
       tab.setAttribute('aria-pressed', key in text.shapes ? (key === 'relief3d') === in3d : key === view);
-      // A cut has one shape only.
       if (key in text.shapes) tab.hidden = view === 'section';
     }
+    tellTabs();
     const cut = view === 'section';
     // A preview made before the structures were sampled has none: the view says so instead of a bare map.
     const unmarked = view === 'structures' && !!world && !world.sketch && !world.structures;
@@ -2550,7 +2611,8 @@
     const tab = document.createElement('button');
     tab.textContent = label;
     tab.dataset.view = key;
-    if (key === 'flat2d') tab.className = 'apart';
+    // What the map shows, then its shape: two choices, a hairline between them.
+    if (key === 'flat2d') $('tabs').append(Object.assign(document.createElement('span'), { className: 'sep' }));
     tab.addEventListener('click', () => {
       if (key in text.shapes) in3d = key === 'relief3d';
       else if (key !== view) { view = key; openGroupsFor(view); }
@@ -2569,15 +2631,20 @@
     const step = (mark, label, seconds) => {
       const span = document.createElement('span');
       span.className = seconds == null ? 'step now' : 'step';
-      span.innerHTML = '<b></b>';
+      span.title = label;
+      span.innerHTML = '<b></b><span class="label"></span>';
       span.firstChild.textContent = mark;
-      span.append(seconds == null ? label : `${label}  ${text.duration(seconds)}`);
+      span.lastChild.textContent = label;
+      if (seconds != null) span.append(Object.assign(document.createElement('span'), { className: 'took', textContent: text.duration(seconds) }));
       return span;
     };
     const bar = document.createElement('div');
     bar.className = 'bar';
     bar.style.setProperty('--share', share);
-    $('steps').replaceChildren(bar, ...done.map(([label, seconds]) => step('✓', label, seconds)), ...(current ? [step('›', current)] : []));
+    const line = document.createElement('div');
+    line.className = 'line';
+    line.append(...done.map(([label, seconds]) => step('✓', label, seconds)), ...(current ? [step('›', current)] : []));
+    $('steps').replaceChildren(bar, line);
   }
 
   // Waits for a run with the page: the steps, the sketches, then the map or the trouble. `ended` resolves
@@ -2589,7 +2656,8 @@
     tell('running');
     inRun = run;
     // While the run is under way, the button stops it, or starts another in its place.
-    $('generate').disabled = false;
+    $('generate').disabled = $('stopRun').disabled = false;
+    $('generate').style.setProperty('--share', 0);
     showButton();
     $('status').className = '';
     // The map on screen is about to be replaced: it steps back while the new one is computed.
@@ -2609,6 +2677,7 @@
     const tick = () => {
       const elapsed = text.duration(seconds());
       showSteps(done, part == null ? stage : `${stage} · ${part} %`, share());
+      $('generate').style.setProperty('--share', share());
       $('status').textContent = `${expected ? text.running(elapsed, text.duration(expected)) : text.measuring(elapsed)}${world?.sketch ? ` ${text.steps.readable}` : ''}`;
     };
     const clock = setInterval(tick, 1000);
@@ -2670,7 +2739,8 @@
     busy = false;
     tell(finished ? 'ready' : trouble ? 'failed' : 'idle');
     $('generate').textContent = text.generate;
-    $('generate').classList.remove('stop');
+    $('generate').classList.remove('running');
+    $('stopRun').disabled = false;
     $('frame').classList.remove('busy');
     $('numbers').classList.remove('stale');
     $('numbers').inert = false;
@@ -2705,14 +2775,20 @@
       return reply.json().catch(() => null);
     }, { seed, samples, detail, values: tectonic });
   }
+  // One press is enough: the run ends a moment later, and the wait for it says so.
+  function stopRun() {
+    $('generate').disabled = $('stopRun').disabled = true;
+    fetch('/api/preview/stop', { method: 'POST' }).catch(() => { });
+  }
+  $('stopRun').addEventListener('click', () => { if (busy) stopRun(); });
   $('generate').addEventListener('click', () => {
     if (exporting) return;
     if (busy) {
+      // The run under way is the one on screen: the button only says so.
+      if (sameAs(inRun)) return;
       // A setting moved: the new run waits for this one to stop, then starts by itself.
-      if (!sameAs(inRun)) queued = generate;
-      // One press is enough: the run ends a moment later, and the wait for it says so.
-      $('generate').disabled = true;
-      fetch('/api/preview/stop', { method: 'POST' }).catch(() => { });
+      queued = generate;
+      stopRun();
       return;
     }
     generate();
@@ -2861,7 +2937,6 @@
     else if (s) s.ids.forEach((kind, i) => { if (s.under[i] === part && s.count[i]) chosen.structures.add(kind); });
   }
   if (world && chosen.biomes.size) { showChoice(); paint(); }
-  if (asked.get('panel')) showPanel(asked.get('panel'));
   for (const key of (asked.get('view') || '').split(',')) $('tabs').querySelector(`[data-view="${key}"]`)?.click();
   // Tells a capture that everything asked for is drawn (see scripts/capture.ps1).
   await drawing3d;
