@@ -307,6 +307,21 @@
   /* On the figures of the goal, what moved is the answer: it reads as strongly as the value. */
   .figures .goal-change { color: var(--text); font-weight: 600; }
   .figures .rule { grid-column: 1 / -1; height: 1px; margin: 6px 0; padding: 0; border: 0; background: var(--line); }
+  /* The figures now, or how a few of them moved run after run: two words over the block, like the left column's. */
+  #figureTabs { margin-bottom: 8px; }
+  #figureTabs button { font-weight: 600; }
+  /* One small line per figure, oldest run left: the eye reads its slope, the number beside its name says
+     where the run pointed at stands. A hairline across a line is where the seed changed. */
+  #history { display: flex; flex-direction: column; gap: 8px; cursor: crosshair; }
+  .trend { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 10px; align-items: baseline; font-size: 13px; }
+  .trend > span:first-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .trend .value { font-weight: 600; }
+  .trend svg { grid-column: 1 / -1; display: block; width: 100%; height: 30px; overflow: visible; }
+  .trend .line { fill: none; stroke: var(--text); stroke-width: 1.5; stroke-linejoin: round; }
+  .trend .seed { stroke: var(--track); stroke-width: 1; stroke-dasharray: 2 2; }
+  .trend .now { stroke: var(--muted); stroke-width: 1; }
+  .trend .dot { fill: var(--text); stroke: var(--ground); stroke-width: 2; }
+  #historyProbe { min-height: 36px; font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
   .biome {
     width: 100%; display: grid; grid-template-columns: 12px minmax(0, 1fr) auto auto; gap: 8px; align-items: center;
     padding: 4px 0; text-align: left; font-size: 13px;
@@ -408,8 +423,9 @@
 
   <section class="column" id="numbers">
     <div id="figuresBlock">
-      <h2 data-text="figures"></h2>
+      <div id="figureTabs" class="choice"></div>
       <div class="figures num" id="figures"></div>
+      <div id="history" class="num" hidden></div>
     </div>
     <div id="listBlock" class="rule">
       <div>
@@ -461,6 +477,17 @@
     openFailed: 'The folder could not be opened: it may have been moved or deleted.',
     exportFailed: 'The export failed.',
     figures: 'In figures',
+    history: 'History',
+    // The figures followed run after run: those of the goal, then the two that pay for them.
+    historyFigures: ['flat', 'expanse', 'typical', 'ocean', 'high'],
+    historyFew: 'Generate again over this area, at this detail, and each figure gets a line from run to run.',
+    historyHint: n => `The last ${n} runs over this area, at this detail, oldest left. Point at one to see what it changed.`,
+    historyRun: (at, of, what) => `Run ${at} of ${of}: ${what}.`,
+    historyFirst: 'the first one kept',
+    historySeed: seed => `seed ${seed}`,
+    historySame: 'same settings',
+    historyMoved: (name, from, to) => `${name} ${from} → ${to}`,
+    historyMany: count => `${count} settings changed`,
     change: 'change',
     was: v => `before: ${v}`,
     same: '=',
@@ -1494,7 +1521,110 @@
       rows.push(label, value, moved);
     }
     $('figures').replaceChildren(...rows);
+    if (!$('history').hidden) showHistory();
   }
+
+  // ---------- history: the figures of each map that came to the screen, kept by the browser, the last 60.
+  // A map is kept once: a reload that finds the same seed, area, detail and settings adds nothing.
+  let history = [];
+  try { history = JSON.parse(localStorage.getItem('preview.history')) || []; } catch { }
+  function remember() {
+    if (!world || world.sketch || !shown) return;
+    const f = world.figures;
+    const entry = { at: Date.now(), seed: shown.seed, span: f.span, step: f.step, values: shown.values, figures: f };
+    const last = history.at(-1), key = e => JSON.stringify([e.seed, e.span, e.step, e.values]);
+    if (last && key(last) === key(entry)) return;
+    history = [...history, entry].slice(-60);
+    try { localStorage.setItem('preview.history', JSON.stringify(history)); } catch { }
+  }
+
+  // The figures only compare over the same area at the same detail (see measure): the line keeps those runs.
+  let pointed = null;
+  function showHistory() {
+    const f = world?.figures;
+    const runs = f ? history.filter(e => e.span === f.span && e.step === f.step) : [];
+    const keys = text.historyFigures.filter(key => runs.some(e => e.figures[key] != null));
+    const format = { ocean: percent, flat: percent, high: percent, typical: blocks, expanse: blocks };
+    const at = pointed != null && pointed < runs.length ? pointed : runs.length - 1;
+    const probe = document.createElement('div');
+    probe.id = 'historyProbe';
+    if (runs.length < 2) {
+      probe.textContent = text.historyFew;
+      $('history').replaceChildren(probe);
+      return;
+    }
+    const width = $('history').clientWidth || 300, height = 30;
+    const x = i => i / (runs.length - 1) * width;
+    const svg = (tag, attrs) => {
+      const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
+      for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+      return el;
+    };
+    const rows = keys.map(key => {
+      const values = runs.map(e => e.figures[key]);
+      const known = values.filter(v => v != null);
+      let low = Math.min(...known), high = Math.max(...known);
+      // A figure that did not move lies across the middle, not along an edge.
+      if (high - low < 1e-9) { low -= 1; high += 1; }
+      const y = v => 2 + (1 - (v - low) / (high - low)) * (height - 4);
+      const row = document.createElement('div');
+      row.className = 'trend';
+      const [name, , definition] = text.figureNames[key];
+      const label = document.createElement('span');
+      label.textContent = name; label.title = definition;
+      const value = document.createElement('span');
+      value.className = 'value';
+      value.textContent = values[at] == null ? '—' : format[key](values[at]);
+      const plot = svg('svg', { width, height, 'aria-hidden': 'true' });
+      runs.forEach((e, i) => { if (i && e.seed !== runs[i - 1].seed) plot.append(svg('line', { class: 'seed', x1: x(i), x2: x(i), y1: 0, y2: height })); });
+      plot.append(svg('line', { class: 'now', x1: x(at), x2: x(at), y1: 0, y2: height }));
+      // A run whose detail could not give the figure leaves a gap in its line.
+      let d = '', pen = 'M';
+      values.forEach((v, i) => { if (v == null) { pen = 'M'; return; } d += `${pen}${x(i).toFixed(1)},${y(v).toFixed(1)}`; pen = 'L'; });
+      plot.append(svg('path', { class: 'line', d }));
+      if (values[at] != null) plot.append(svg('circle', { class: 'dot', cx: x(at), cy: y(values[at]), r: 3.5 }));
+      row.append(label, value, plot);
+      return row;
+    });
+    probe.textContent = pointed == null ? text.historyHint(runs.length) : text.historyRun(at + 1, runs.length, changes(runs[at - 1], runs[at]));
+    $('history').replaceChildren(...rows, probe);
+  }
+  // What a run changed from the one before it: the seed, then the settings by their names.
+  function changes(was, now) {
+    if (!was) return text.historyFirst;
+    const said = [];
+    if (was.seed !== now.seed) said.push(text.historySeed(now.seed));
+    const moved = Object.keys(now.values).filter(key => key in was.values && was.values[key] !== now.values[key]);
+    if (moved.length > 2) said.push(text.historyMany(moved.length));
+    else for (const key of moved) said.push(text.historyMoved(text.settings[key]?.[0] ?? key, was.values[key], now.values[key]));
+    return said.join(', ') || text.historySame;
+  }
+  // The pointer picks the nearest run, across every line at once.
+  $('history').addEventListener('pointermove', event => {
+    const f = world?.figures, count = f ? history.filter(e => e.span === f.span && e.step === f.step).length : 0;
+    if (count < 2) return;
+    const box = $('history').getBoundingClientRect();
+    const at = Math.max(0, Math.min(count - 1, Math.round((event.clientX - box.left) / box.width * (count - 1))));
+    if (at !== pointed) { pointed = at; showHistory(); }
+  });
+  $('history').addEventListener('pointerleave', () => { pointed = null; showHistory(); });
+  new ResizeObserver(() => { if (!$('history').hidden && world) showHistory(); }).observe($('history'));
+
+  function showFigureTab(key, keep) {
+    $('figures').hidden = key !== 'figures';
+    $('history').hidden = key !== 'history';
+    for (const tab of $('figureTabs').children) tab.setAttribute('aria-pressed', tab.dataset.key === key);
+    if (key === 'history' && world) showHistory();
+    if (keep) try { localStorage.setItem('preview.figureTab', key); } catch { }
+  }
+  for (const key of ['figures', 'history']) {
+    const tab = document.createElement('button');
+    tab.textContent = text[key];
+    tab.dataset.key = key;
+    tab.onclick = () => showFigureTab(key, true);
+    $('figureTabs').append(tab);
+  }
+  { let kept = null; try { kept = localStorage.getItem('preview.figureTab'); } catch { } showFigureTab(kept === 'history' ? 'history' : 'figures'); }
 
   function showList() {
     // The section's list is its ores, filled when the cut is drawn.
@@ -2507,6 +2637,7 @@
           try { localStorage.setItem('preview.before', JSON.stringify(before)); } catch { }
         }
         world = await loadWorld();
+        remember();
         finished = true;
       }
     } catch (e) { trouble = e instanceof TypeError ? text.serverGone : e.message || text.failed; }
@@ -2652,6 +2783,7 @@
     $('steps').replaceChildren(notice);
   }
   world = await loadWorld();
+  remember();
   if (world) showWorld(); else showTabs();
   showButton();
 
