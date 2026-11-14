@@ -170,7 +170,8 @@ $world = 'seed-' + ($Seed -replace '[^A-Za-z0-9_-]', '_')
 # 5. Run. The mod stops the server itself once the files are written.
 Remove-Item (Join-Path $Out 'preview.json'), (Join-Path $Out 'coarse.json'), (Join-Path $Out 'coarse-*.bin'),
     (Join-Path $Out 'section.json'), (Join-Path $Out 'section-*.bin'), (Join-Path $Out 'ores.json'),
-    (Join-Path $Out 'structures.json'), (Join-Path $Out 'timing.json') -ErrorAction SilentlyContinue
+    (Join-Path $Out 'structures.json'), (Join-Path $Out 'timing.json'), (Join-Path $Out 'progress.json'),
+    (Join-Path $Out 'partial.json'), (Join-Path $Out 'partial-*.bin') -ErrorAction SilentlyContinue
 $watch = [Diagnostics.Stopwatch]::StartNew()
 $null = Invoke-Java $Dir (Join-Path $Dir 'last-run.log') @('-Xmx4G', '-XX:+UseZGC', "-Dworldpreview.out=$Out",
     "-Dworldpreview.samples=$Samples", "-Dworldpreview.step=$Step", "-Dworldpreview.detail=$Detail", '-jar', $launcher, 'nogui') -Background

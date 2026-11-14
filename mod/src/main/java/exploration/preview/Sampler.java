@@ -7,6 +7,7 @@ import java.nio.ByteOrder;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -115,13 +116,14 @@ final class Sampler {
 		WorldPreview.LOG.info("World preview: {} threads of {}", pool.getParallelism(),
 				Runtime.getRuntime().availableProcessors());
 		long began = System.nanoTime();
-		try {
-			Grid full = run(out, source, pool, samples, step, origin, detail);
+		try (Progress progress = new Progress(out)) {
+			Grid full = run(out, source, pool, progress, samples, step, origin, detail);
 			// A map stopped at a sketch is all that was asked: the cuts and the structures cost the same
 			// whatever the detail, and are left for a full map.
 			if (full.step() != step) {
 				return;
 			}
+			progress.begin("extras", step, 0, null);
 			// What comes with the map. The map is already written: trouble here must not lose it.
 			try {
 				Section.write(out, source, full, pool);
@@ -146,17 +148,18 @@ final class Sampler {
 	}
 
 	/**
-	 * How many threads sample: {@code -Dworldpreview.threads} when given, else half of what the machine
-	 * has. Half leaves a core in two to whatever else the person is doing, on any machine, and on the
-	 * usual processor with two threads per core it is one thread per real core.
+	 * How many threads sample: {@code -Dworldpreview.threads} when given, else three quarters of what
+	 * the machine has. The quarter left over keeps the rest of the machine answering, along with the
+	 * priority below normal the server runs at. Half was the rule before that priority existed; three
+	 * quarters gives the same files a quarter sooner on a wide pass (measured, 16 threads).
 	 */
 	private static int threads() {
 		int asked = Integer.getInteger("worldpreview.threads", 0);
-		return asked > 0 ? asked : Math.max(1, Runtime.getRuntime().availableProcessors() / 2);
+		return asked > 0 ? asked : Math.max(1, Runtime.getRuntime().availableProcessors() * 3 / 4);
 	}
 
-	private static Grid run(Path out, Generator source, ForkJoinPool pool, int samples, int step, int origin,
-			int detail) throws IOException {
+	private static Grid run(Path out, Generator source, ForkJoinPool pool, Progress progress, int samples, int step,
+			int origin, int detail) throws IOException {
 		// A coarse pass covers the same square with a longer step. It leaves the aquifers out: setting
 		// one up looks for the surface level all over the area its columns cover, so its cost follows
 		// the area, not the number of points, and with aquifers a pass of one point in four would cost
@@ -172,15 +175,16 @@ final class Sampler {
 			if (step * coarse == detail) {
 				// The last pass asked for: written as the map itself, whatever its size, and still without
 				// the aquifers, so close but not proven exact like any sketch.
-				Grid last = sample(source, pool, samples / coarse, detail, origin, false);
+				Grid last = sample(source, pool, progress, samples / coarse, detail, origin, false, true);
 				write(out, "preview", source, last);
 				return last;
 			}
 			if (samples / coarse >= COARSE_MIN) {
-				write(out, "coarse", source, sample(source, pool, samples / coarse, step * coarse, origin, false));
+				write(out, "coarse", source,
+						sample(source, pool, progress, samples / coarse, step * coarse, origin, false, false));
 			}
 		}
-		Grid full = sample(source, pool, samples, step, origin, true);
+		Grid full = sample(source, pool, progress, samples, step, origin, true, true);
 		write(out, "preview", source, full);
 		return full;
 	}
@@ -200,9 +204,12 @@ final class Sampler {
 		}
 	}
 
-	/** One pass, with the aquifers when {@code exact}, as the generator does. */
-	private static Grid sample(Generator source, ForkJoinPool pool, int samples, int step, int origin,
-			boolean exact) {
+	/**
+	 * One pass, with the aquifers when {@code exact}, as the generator does. The {@code map} pass, the one
+	 * written as the map, also hands its points to the page as they come (see {@link Progress}).
+	 */
+	private static Grid sample(Generator source, ForkJoinPool pool, Progress progress, int samples, int step,
+			int origin, boolean exact, boolean map) {
 		long started = System.nanoTime();
 		short[] heights = new short[samples * samples];
 		@SuppressWarnings("unchecked")
@@ -214,17 +221,46 @@ final class Sampler {
 		// on that pool, hence the submit.
 		NoiseGeneratorSettings settings = exact ? source.settings() : source.dry();
 		int tiles = (samples + TILE - 1) / TILE;
+		Progress.Partial partial = null;
+		Map<String, Integer> partialIndex = new HashMap<>();
+		if (map) {
+			List<Holder<Biome>> possible = possible(source);
+			for (Holder<Biome> biome : possible) {
+				partialIndex.put(biome.getRegisteredName(), partialIndex.size());
+			}
+			short[] shown = new short[samples * samples];
+			Arrays.fill(shown, Progress.UNKNOWN);
+			partial = new Progress.Partial(samples, step, origin, heights, shown, possible,
+					Progress.world(source, samples, step, origin, possible));
+		}
+		progress.begin(map ? "map" : "sketch", step, tiles * tiles, partial);
+		Progress.Partial draft = partial;
+		int seaLevel = source.generator().getSeaLevel();
 		pool.submit(() -> IntStream.range(0, tiles * tiles).parallel().forEach(tile -> {
 			int col0 = (tile % tiles) * TILE, row0 = (tile / tiles) * TILE;
-			sampleTile(source, settings, samples, step, origin, col0, row0,
-					Math.min(TILE, samples - col0), Math.min(TILE, samples - row0), heights);
+			int sizeX = Math.min(TILE, samples - col0), sizeZ = Math.min(TILE, samples - row0);
+			sampleTile(source, settings, samples, step, origin, col0, row0, sizeX, sizeZ, heights);
+			if (draft != null) {
+				// The draft's biomes, read tile by tile: in this order a point where two biomes fit equally
+				// may get the other one (see the row order below), which the map itself then corrects.
+				BiomeResolver resolver = source.generator().getBiomeSource().createUncachedResolver(source.randomState());
+				for (int iz = 0; iz < sizeZ; iz++) {
+					for (int ix = 0; ix < sizeX; ix++) {
+						int i = (row0 + iz) * samples + col0 + ix;
+						int surface = Math.max(heights[i], seaLevel);
+						Holder<Biome> biome = resolver.getNoiseBiome(QuartPos.fromBlock(origin + (col0 + ix) * step),
+								QuartPos.fromBlock(surface), QuartPos.fromBlock(origin + (row0 + iz) * step));
+						draft.biomes()[i] = (short) (int) partialIndex.getOrDefault(biome.getRegisteredName(), 0);
+					}
+				}
+			}
+			progress.tileDone();
 		})).join();
 
 		// The biomes come after, row by row from west to east, as before the tiles. The order matters:
 		// the biome source remembers, per thread, the biome it found last and starts its next search
 		// from it, so where two biomes fit a point equally well, the one found first wins. Read in
 		// another order, a few points in a hundred thousand change biome.
-		int seaLevel = source.generator().getSeaLevel();
 		pool.submit(() -> IntStream.range(0, samples).parallel().forEach(row -> {
 			BiomeResolver resolver = source.generator().getBiomeSource().createUncachedResolver(source.randomState());
 			int z = origin + row * step;
@@ -297,17 +333,21 @@ final class Sampler {
 	 * mods that add cave biomes fill). Without that tag in the pack, every biome counts as a surface one.
 	 */
 	private static JsonArray possibleBiomes(Generator source) {
-		List<Holder<Biome>> possible = new ArrayList<>(source.generator().getBiomeSource().possibleBiomes());
-		// A set has no order of its own: by name, so two runs write the same file.
-		possible.sort((a, b) -> a.getRegisteredName().compareTo(b.getRegisteredName()));
 		JsonArray list = new JsonArray();
-		for (Holder<Biome> biome : possible) {
+		for (Holder<Biome> biome : possible(source)) {
 			JsonObject entry = new JsonObject();
 			entry.addProperty("id", biome.getRegisteredName());
 			entry.addProperty("underground", biome.is(UNDERGROUND));
 			list.add(entry);
 		}
 		return list;
+	}
+
+	/** Every biome the biome source can place, by name: a set has no order of its own, and two runs must agree. */
+	private static List<Holder<Biome>> possible(Generator source) {
+		List<Holder<Biome>> possible = new ArrayList<>(source.generator().getBiomeSource().possibleBiomes());
+		possible.sort((a, b) -> a.getRegisteredName().compareTo(b.getRegisteredName()));
+		return possible;
 	}
 
 	/**
