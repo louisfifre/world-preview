@@ -311,14 +311,13 @@
   #figureTabs { margin-bottom: 8px; }
   #figureTabs button { font-weight: 600; }
   /* One small line per figure, oldest run left: the eye reads its slope, the number beside its name says
-     where the run pointed at stands. A hairline across a line is where the seed changed. */
+     where the run pointed at stands. */
   #history { display: flex; flex-direction: column; gap: 8px; cursor: crosshair; }
   .trend { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 10px; align-items: baseline; font-size: 13px; }
   .trend > span:first-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .trend .value { font-weight: 600; }
   .trend svg { grid-column: 1 / -1; display: block; width: 100%; height: 30px; overflow: visible; }
   .trend .line { fill: none; stroke: var(--text); stroke-width: 1.5; stroke-linejoin: round; }
-  .trend .seed { stroke: var(--track); stroke-width: 1; stroke-dasharray: 2 2; }
   .trend .now { stroke: var(--muted); stroke-width: 1; }
   .trend .dot { fill: var(--text); stroke: var(--ground); stroke-width: 2; }
   #historyProbe { min-height: 36px; font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
@@ -480,11 +479,10 @@
     history: 'History',
     // The figures followed run after run: those of the goal, then the two that pay for them.
     historyFigures: ['flat', 'expanse', 'typical', 'ocean', 'high'],
-    historyFew: 'Generate again over this area, at this detail, and each figure gets a line from run to run.',
-    historyHint: n => `The last ${n} runs over this area, at this detail, oldest left. Point at one to see what it changed.`,
+    historyFew: 'Generate again with this seed, over this area, at this detail, and each figure gets a line from run to run.',
+    historyHint: n => `The ${n} runs of this seed over this area, at this detail, oldest left. Point at one to see what it changed.`,
     historyRun: (at, of, what) => `Run ${at} of ${of}: ${what}.`,
     historyFirst: 'the first one kept',
-    historySeed: seed => `seed ${seed}`,
     historySame: 'same settings',
     historyMoved: (name, from, to) => `${name} ${from} → ${to}`,
     historyMany: count => `${count} settings changed`,
@@ -1534,25 +1532,37 @@
     if (!$('history').hidden) showHistory();
   }
 
-  // ---------- history: the figures of each map that came to the screen, kept by the browser, the last 60.
-  // A map is kept once: a reload that finds the same seed, area, detail and settings adds nothing.
+  // ---------- history: the figures of each map that came to the screen, kept by the browser with no end. A
+  // seed is one line of work, so its runs are all kept. Only when the browser's room runs out do the oldest
+  // runs go, those of other seeds first. A map is kept once: a reload that finds the same seed, area,
+  // detail and settings adds nothing. Only the followed figures are kept, so a run weighs about one kilobyte.
   let history = [];
   try { history = JSON.parse(localStorage.getItem('preview.history')) || []; } catch { }
   function remember() {
     if (!world || world.sketch || !shown) return;
     const f = world.figures;
-    const entry = { at: Date.now(), seed: shown.seed, span: f.span, step: f.step, values: shown.values, figures: f };
-    const last = history.at(-1), key = e => JSON.stringify([e.seed, e.span, e.step, e.values]);
-    if (last && key(last) === key(entry)) return;
-    history = [...history, entry].slice(-60);
-    try { localStorage.setItem('preview.history', JSON.stringify(history)); } catch { }
+    const figures = Object.fromEntries(text.historyFigures.map(key => [key, f[key]]));
+    const entry = { at: Date.now(), seed: shown.seed, span: f.span, step: f.step, values: shown.values, figures };
+    const key = e => JSON.stringify([e.seed, e.span, e.step, e.values]);
+    if (history.length && key(history.at(-1)) === key(entry)) return;
+    history.push(entry);
+    for (;;) {
+      try { localStorage.setItem('preview.history', JSON.stringify(history)); return; } catch { }
+      const other = history.findIndex(e => e.seed !== entry.seed);
+      if (other < 0 && history.length < 2) return;
+      history.splice(other < 0 ? 0 : other, 1);
+    }
   }
+  // The runs a line follows: this seed, over this area, at this detail, since the figures only compare there
+  // (see measure).
+  const runsHere = () => {
+    const f = world?.figures;
+    return f && shown ? history.filter(e => e.seed === shown.seed && e.span === f.span && e.step === f.step) : [];
+  };
 
-  // The figures only compare over the same area at the same detail (see measure): the line keeps those runs.
   let pointed = null;
   function showHistory() {
-    const f = world?.figures;
-    const runs = f ? history.filter(e => e.span === f.span && e.step === f.step) : [];
+    const runs = runsHere();
     const keys = text.historyFigures.filter(key => runs.some(e => e.figures[key] != null));
     const format = { ocean: percent, flat: percent, high: percent, typical: blocks, expanse: blocks };
     const at = pointed != null && pointed < runs.length ? pointed : runs.length - 1;
@@ -1586,7 +1596,6 @@
       value.className = 'value';
       value.textContent = values[at] == null ? '—' : format[key](values[at]);
       const plot = svg('svg', { width, height, 'aria-hidden': 'true' });
-      runs.forEach((e, i) => { if (i && e.seed !== runs[i - 1].seed) plot.append(svg('line', { class: 'seed', x1: x(i), x2: x(i), y1: 0, y2: height })); });
       plot.append(svg('line', { class: 'now', x1: x(at), x2: x(at), y1: 0, y2: height }));
       // A run whose detail could not give the figure leaves a gap in its line.
       let d = '', pen = 'M';
@@ -1603,7 +1612,6 @@
   function changes(was, now) {
     if (!was) return text.historyFirst;
     const said = [];
-    if (was.seed !== now.seed) said.push(text.historySeed(now.seed));
     const moved = Object.keys(now.values).filter(key => key in was.values && was.values[key] !== now.values[key]);
     if (moved.length > 2) said.push(text.historyMany(moved.length));
     else for (const key of moved) said.push(text.historyMoved(text.settings[key]?.[0] ?? key, was.values[key], now.values[key]));
@@ -1611,7 +1619,7 @@
   }
   // The pointer picks the nearest run, across every line at once.
   $('history').addEventListener('pointermove', event => {
-    const f = world?.figures, count = f ? history.filter(e => e.span === f.span && e.step === f.step).length : 0;
+    const count = runsHere().length;
     if (count < 2) return;
     const box = $('history').getBoundingClientRect();
     const at = Math.max(0, Math.min(count - 1, Math.round((event.clientX - box.left) / box.width * (count - 1))));
