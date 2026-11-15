@@ -1,9 +1,11 @@
 //! Child processes: java for a run or for the pack sync, and the downloads.
 
 use crate::win::KillOnCloseJob;
-use crate::{CREATE_NO_WINDOW, Error, Result};
+use crate::{CREATE_NO_WINDOW, Error, Result, STOPPED};
 use std::fs::File;
 use std::io;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
 use std::os::windows::process::CommandExt;
 use std::path::Path;
 use std::process::{Command, Stdio};
@@ -15,7 +17,9 @@ const BELOW_NORMAL_PRIORITY_CLASS: u32 = 0x0000_4000;
 /// The process is tied to this program: if the program dies, so does java.
 /// `background` runs it below the normal priority: a long computation steps aside, or Windows would
 /// serve it before the window the person is looking at.
-pub fn run_java(java: &Path, work_dir: &Path, log: &Path, args: &[String], background: bool) -> Result<i32> {
+/// `stop`, once set, ends java and makes this an error: a caller that holds the driver as a library has no
+/// process of the driver's to kill, only this flag.
+pub fn run_java(java: &Path, work_dir: &Path, log: &Path, args: &[String], background: bool, stop: Option<&AtomicBool>) -> Result<i32> {
     let errors = log.with_extension("errors.log");
     let open = |path: &Path| File::create(path).map_err(|e| Error::new(format!("Could not write {}: {e}", path.display())));
     let mut command = Command::new(java);
@@ -29,8 +33,18 @@ pub fn run_java(java: &Path, work_dir: &Path, log: &Path, args: &[String], backg
     let job = KillOnCloseJob::new()?;
     let mut child = command.spawn().map_err(|e| Error::new(format!("Could not start {}: {e}", java.display())))?;
     job.add(&child)?;
-    let status = child.wait().map_err(|e| Error::new(format!("Lost the Java process: {e}")))?;
-    Ok(status.code().unwrap_or(-1))
+    let lost = |e: io::Error| Error::new(format!("Lost the Java process: {e}"));
+    loop {
+        if let Some(status) = child.try_wait().map_err(lost)? {
+            return Ok(status.code().unwrap_or(-1));
+        }
+        if stop.is_some_and(|s| s.load(Ordering::Relaxed)) {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(Error::new(STOPPED));
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
 }
 
 /// A file from the web, written beside its place and moved there in one go, so a run cut short never
@@ -44,6 +58,31 @@ pub fn download(url: &str, dest: &Path) -> Result<()> {
         io::copy(&mut response.body_mut().as_reader(), &mut file).map_err(|e| fail(&e))?;
     }
     std::fs::rename(&part, dest).map_err(|e| fail(&e))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Arc;
+    use std::time::Instant;
+
+    #[test]
+    fn a_stop_ends_the_process_and_says_so() {
+        let dir = std::env::temp_dir().join(format!("world-preview-test-{}-stop", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let stop = Arc::new(AtomicBool::new(false));
+        let flag = stop.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(300));
+            flag.store(true, Ordering::Relaxed);
+        });
+        let started = Instant::now();
+        // Any long program stands for java: ping waits about 30 s.
+        let args: Vec<String> = ["/c", "ping", "-n", "30", "127.0.0.1"].map(String::from).into();
+        let result = run_java(Path::new("cmd.exe"), &dir, &dir.join("stop.log"), &args, false, Some(&stop));
+        assert_eq!(result.unwrap_err().to_string(), STOPPED);
+        assert!(started.elapsed() < Duration::from_secs(5), "the stop took {:?}", started.elapsed());
+    }
 }
 
 pub fn get_text(url: &str) -> Result<String> {

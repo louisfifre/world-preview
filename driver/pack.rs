@@ -167,7 +167,7 @@ pub fn sync_pack(pack: &Path, target: &Path, repo: &Path, java: &Path, log: &mut
             file_uri(&pack.join("pack.toml")),
         ]
         .into();
-        let code = run_java(java, target, &sync_log, &args, false)?;
+        let code = run_java(java, target, &sync_log, &args, false, None)?;
         if code != 0 {
             return Err(Error::new(format!(
                 "The pack's mods could not be installed (packwiz-installer, code {code}). See {}. A pack edited by hand needs 'packwiz refresh' first, so that its index matches its files.",
