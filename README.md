@@ -1,102 +1,78 @@
-<p align="center">
-  <img src="docs/media/board-hero.png" alt="World preview. See the world a seed and its terrain settings give, before anyone plays in it. The game's own generator: a first sketch in about 12 seconds, the map in about 35." width="100%">
-</p>
+# world-preview
 
-The world preview shows what a Minecraft seed and a set of terrain values would give, without playing and without generating the world. It asks the game's own generator, through a throwaway server running your Fabric modpack, how high the ground is and which biome sits at the surface, then draws the answer in a small window.
+An engine that makes the maps of a Minecraft world from the game's own worldgen, without generating the world. Give it a seed, a Fabric modpack with [Tectonic](https://modrinth.com/mod/tectonic), and the Tectonic values to try: it starts a throwaway dedicated server with that pack and a small mod of its own, asks the generator what it would build on a grid, and writes the answer as files in a folder.
 
-It was written while tuning a modpack's terrain, where every try used to mean starting the game and flying around.
+It draws nothing. Outpost Tools, its maintainer's launcher (a repository of its own), is its interface: it runs this engine and draws the maps. Anyone else can run the engine alone and read its files, to build another interface or to measure worlds.
 
 > **Personal project.** Windows only, driven by PowerShell scripts.
 
-<img src="docs/media/board-window.png" alt="The preview window: the views of the map and its 2D or 3D shape in a toolbar at the top; on the left the seed and the width of the scanned area, then the Tectonic settings in groups; the map in the middle; the figures and the list of biomes on the right." width="100%">
+## What it asks the generator
 
-- **The real generator, without the world.** A throwaway dedicated server starts with the pack, and a small mod asks the generator two questions on a grid, one point every 16 blocks: how high is the ground, which biome is at the surface. No chunk is generated. Trees and caves are therefore not on the map, and a structure is a point where it would start.
-- **A seed and every Tectonic setting.** Each setting of the pack's [Tectonic](https://modrinth.com/mod/tectonic) config has its field, read from the file itself: a number typed or moved a step with the arrow keys, or a word that turns over between on and off. A setting's hint shows while its field is edited. They come in groups (biomes and climate, relief, continents with oceans and islands, caves, and what the map does not draw); a setting the page does not know yet still shows, with Tectonic's own comment. They start at the pack's values; a changed one keeps the pack's value beside it. Sets of values can be kept under a name.
-- **Sketches first, then the map.** A coarse sketch takes the map's place while the full map is computed, then finer ones replace it: on the widest area, one point every 256 blocks, then 64, then 32 (see the timings below). Then the map fills in over the last sketch, tile by tile, as its points come. The steps of the run are listed under the map: the one under way with the share of it done, the others with the second they ended at. While a run is under way the button says so and fills as the wait goes; the square beside it stops the run. A setting moved during a run turns the button back into Generate, which stops that run and starts the new one.
-- **A coarser map, sooner.** Beside the button, the detail: a point every 64, 32 or 16 blocks, each with the wait it costs on this machine. A coarser map stops at that sketch: it comes sooner, and the views and figures it cannot give (flat land, structures, the section) are greyed.
-- **The machine stays usable.** The computation takes three quarters of the processor's threads and runs below the normal priority, so the page and everything else keep answering while it works.
-- **Nothing is written to the pack.** A preview changes the config of its own throwaway server only.
-
-<img src="docs/media/board-views.png" alt="The same area in four views: biomes, flat land, relief, temperature." width="100%">
-
-<img src="docs/media/board-measure.png" alt="The figures after a second run, with what changed since the run before." width="100%">
-
-- **Figures for the question asked.** Three figures lead: the share of flat land, the width of a typical flat zone, the width of a typical biome. Flat means level ground among level ground: 2 blocks at most to the neighbour points, for at least 5 of the 9 points around. A river does not cut a flat zone.
-- **What moved since the run before.** After a second run over the same area, a column shows the change of each figure.
-- **How the figures moved over many runs.** The History section, under In figures, draws a small line per figure (the three of the goal, the sea and the high land) over every run of the same seed, on the same area at the same detail, oldest left; pointing at a run says what it changed from the one before. The browser keeps every map that came to the screen, with no end; only if its room runs out do the oldest go, those of other seeds first.
-- **Which biomes are missing.** The biomes present are counted against all the generator can place at the surface, and the ones the area does not hold are named at the end of the list.
-
-<img src="docs/media/board-biomes.png" alt="Three biomes shown alone on the map, the others stepped back to grey, beside the list of biomes with their typical width and their share." width="100%">
-
-- **A few biomes alone.** A click on a biome, in the list or on the map, shows it alone; more clicks add others. The choice is kept from one run to the next, to follow a biome across tries. The other views have a list of their own, chosen the same way: bands of height, classes of temperature, flat land against slopes and water.
-
-<img src="docs/media/board-relief.png" alt="The biome map draped over the real heights, seen from low above the sea." width="100%">
-
-- **Warm seas and cold seas.** The Temperature view colours the sea like the land, seen through blue: a warm ocean, a cold one and a frozen one are told apart, and counted in the same five classes.
-- **The sea floor too.** The Relief view shades the floor of the sea like the land, and its list counts three depths of water beside the bands of height; in 3D the water is clearer there, so the floor is read through it.
-- **Draped over the real heights.** Any view can be shown in 3D, at true scale: one unit is one block, heights included.
-- **The settings of the view looked at.** The settings are in groups, each under its title, and each view scrolls the list to the groups that move it: the relief for the Relief view, the climate for Temperature. A group's title says when it holds a changed value. World, Settings, In figures and History each open and close on their title, and the page remembers which were left open.
-- **Where structures would start.** The Structures view lists every village, outpost, wreck or ruin the generator would start in the area, those of the mods included, with how many there are and how far apart, in two parts: built on the surface, built under the ground. A kind is drawn on the map once its row is clicked, and none at first: a wide area holds tens of thousands of starts, most of them mineshafts (the game starts one in about 250 chunks, so one every 250 blocks or so).
-- **A cut through the ground, with its ores.** The Section view shows a line across the whole area, from the bottom of the world to its top: a strip of its whole length, and the part chosen on it at true scale, with the generator's own rock, caves, water and lava. The ores are played on it from the rules the server loaded, those of the game and of every mod, and counted near the ground, under low and under high ground. Ores placed at a depth counted from the ground can be added or changed in rows beside the other settings, and the cut follows at once.
-- **A try can be kept.** Export writes a folder under `run\exports`: the settings and the figures in one file, and a picture of each view, flat and in 3D. The page then shows that folder's full path under the map, with a button that opens it.
+- **No chunk is generated.** The mod reads the generator only, never a live world: for each point of a square grid centred on 0,0 (one point every 16 blocks by default), how high the ground is and which biome sits at the surface. So a map of 8192 blocks takes seconds, where real chunks take many minutes. Trees, caves and what a chunk's later steps add are not there.
+- **Sketches first.** Coarse passes come before the full grid, each finer than the one before, so an interface can show something within seconds.
+- **Then what lies around the map**, after a full map only: up to four cuts through the ground from the bottom of the world to its top, the ore rules the server loaded (those of every mod), and every point where a structure would start.
+- **The machine stays usable.** The sampling takes three quarters of the processor's threads and runs below the normal priority.
+- **Nothing is written to the pack.** A run changes the config of its own throwaway server only.
 
 ## Requirements
 
-Nothing to install for whoever already plays Minecraft 26.3 with Fabric mods on Windows:
-
-- Windows 10 or 11. The scripts run under the Windows PowerShell that comes with it.
-- Java 25 or newer. The game's launcher downloads its own the first time Minecraft 26 starts, and the preview finds it there (the official launcher, Prism Launcher, the Modrinth app, CurseForge). Otherwise it is looked for through `JAVA_HOME` and the `PATH`.
-- Brave or Microsoft Edge: the page opens as a bare window of one of them.
-- The mods to preview, for Fabric and Minecraft 26.3, with Tectonic among them, since the settings are Tectonic's values. Either a **game folder**, the one a launcher plays from, which holds `mods` and `config\tectonic.json` (Tectonic writes that file the first time the game starts with it); or a [packwiz](https://packwiz.infra.link/) pack, the folder that holds `pack.toml`. The packwiz tool itself is not needed.
-- Internet the first time: the Fabric server and the game are downloaded once, and the 3D view loads three.js from jsDelivr.
+- Windows 10 or 11. The scripts run under the Windows PowerShell that comes with it (5.1), or PowerShell 7.
+- Java 25 or newer. A Minecraft launcher that has started Minecraft 26 already holds one, and the engine finds it there (the official launcher, Prism Launcher, the Modrinth app, CurseForge); otherwise through `JAVA_HOME` and the `PATH`.
+- A JDK 25 the first time, to build the mod from `mod/` (a few minutes; the build downloads Gradle and the game).
+- The mods, for Fabric and Minecraft 26.3, with Tectonic among them. Either a **game folder**, the one a launcher plays from, which holds `mods` and `config\tectonic.json` (Tectonic writes that file the first time the game starts with it); or a [packwiz](https://packwiz.infra.link/) pack, the folder that holds `pack.toml`. The packwiz tool itself is not needed.
+- Internet the first time: the Fabric server and the game are downloaded once.
 
 ## Running it
 
-### The simple way
-
-1. Download `world-preview-<version>.zip` from the [releases](../../releases) and unzip it anywhere.
-2. Double-click `World Preview.cmd`. If Windows warns about a file from the Internet, choose to run it anyway. The first time, a window asks for your game folder, the one that holds `mods` and `config`: go into it, then click Open.
-   - With the official launcher it is `%APPDATA%\.minecraft`, unless the profile names another: paste that into the address bar at the top of the window and press Enter.
-   - In Prism Launcher, right-click the instance, then Folder: the address of the folder that opens is the one to paste. An instance's folder works too, the game folder is found inside it.
-   - Or skip the window: drag the game folder and drop it on `World Preview.cmd`.
-3. The page opens. Ask for a first map: it stops at once with a sentence about the Minecraft EULA, which is accepted once, by hand (see just below). Then ask again.
-
-#### The Minecraft EULA, once
-
-The preview runs a Minecraft server of its own on your machine, and Minecraft asks whoever runs a server to accept its [EULA](https://aka.ms/MinecraftEULA). No script does it for you:
-
-1. Read the EULA. If you accept it, open the unzipped folder, then `run`, then `preview` (they exist once a first map has been asked for).
-2. Open Notepad, type the single line `eula=true`, and save it there under the name `eula.txt`. In Notepad's save window, set "Save as type" to "All files", or the file ends up named `eula.txt.txt` and is not seen.
-
-The sentence on the page gives the full path of the file it looks for.
-
-The page opens as a window of its own, and that window is the whole application: closing it stops everything, a map being computed included (the page asks first). Opening it again while it runs brings that window back. It runs on a browser profile of its own, in `run\browser`, so it never touches your own browser, its tabs or its sign-ins.
-
-The chosen folder is kept in `run\pack.txt`; delete that file to be asked again. Nothing is ever written to the game folder: its mods and config are copied into the preview's own.
-
-### From the repository
-
 ```powershell
-scripts/serve.ps1 -Pack D:\path\to\my-game-folder-or-pack
+scripts/preview.ps1 -Pack D:\path\to\my-pack -Dir D:\path\to\work -Seed cap-1 -Tectonic @{ vertical_scale = 1.2 }
 ```
 
-`-Pack` is a game folder or a packwiz pack; it can also come from the environment variable `WORLD_PREVIEW_PACK`. `serve.ps1` opens the page on `http://localhost:25590`. From the repository the mod is built on the first run, which needs a JDK 25 and a few minutes; `scripts/package.ps1` makes the ready-to-use zip, with the mod already built.
+| Parameter | What it is |
+| --- | --- |
+| `-Pack` | A game folder or a packwiz pack. From the environment variable `WORLD_PREVIEW_PACK` when omitted. |
+| `-Dir` | The work folder of the throwaway server: its mods, its config, one small world per seed. `run\preview` inside this repository when omitted. |
+| `-Out` | Where the files land. `<Dir>\out` when omitted. |
+| `-Seed` | The world seed, as typed in the game. `cap-1` when omitted. |
+| `-Tectonic` | Values that replace those of the pack's `config/tectonic.json` for this run, by key name. A switch is `$true` or `$false`. An unknown key stops the run. |
+| `-Samples` | Grid points per side, 512 by default (8192 blocks at a step of 16). Measured up to 4096 with a coarser detail, up to 2048 for a full map. |
+| `-Step` | Blocks between two grid points, 16 by default. |
+| `-Detail` | Blocks between two points of the map: `Step` for the full map, or 2 or 4 times `Step` to stop at that sketch, which is then the map. Such a map has no cuts, no ore rules and no structures. |
+| `-Mods` | Jars added to the server on top of the pack's, for a mod being worked on. From `WORLD_PREVIEW_MODS` (paths separated by semicolons) when omitted. |
 
-The throwaway server works in `run\preview` inside this folder unless `-Dir` names another one; exports go to `run\exports` unless `-Exports` names another one. A preview from a shell, without the page:
+The script throws on failure, never `exit`, so a caller can catch the sentence and show it. It ends with `Preview ready in <Out> (<n> s)`. One run at a time on a machine: a second one waits for the first.
 
-```powershell
-scripts/preview.ps1 -Pack D:\path\to\my-pack -Seed cap-1 -Tectonic @{ vertical_scale = 1.2 }
-```
+### The Minecraft EULA, once per work folder
 
-The results land in `<Dir>\out`. `-Samples` goes from 256 to 2048 grid points per side (4096 to 32768 blocks), counted every 16 blocks; the page goes to 4096 (65536 blocks) with `-Detail 32` or `64`.
+The engine runs a Minecraft server, and Minecraft asks whoever runs a server to accept its [EULA](https://aka.ms/MinecraftEULA). No script does it: read it and, if you accept it, write the single line `eula=true` in `<Dir>\eula.txt`. Until then a run stops at once with a sentence that gives the full path of the file.
 
-With another work folder (`-Dir`), the EULA is accepted in that folder: the line `eula=true` in `<Dir>\eula.txt`, written by whoever owns the folder. Until then a run stops at once with a sentence saying where the file goes.
+## What it outputs
+
+Everything lands in the out folder. A run removes the files of the run before first, then writes each file beside its place and moves it there in one go, so a reader never sees half of one.
+
+The grid: `samples` points a side, `step` blocks apart, the first point (north-west) at `originX`, `originZ`. Point `i` is at column `i % samples`, row `i / samples`, that is at `x = originX + column * step`, `z = originZ + row * step`: row by row from north to south, each row from west to east. Every `.bin` file is little-endian.
+
+| File | When | What it holds |
+| --- | --- | --- |
+| `preview.json` | The map is done | `seed`, `samples`, `step`, `originX`, `originZ`, `seaLevel`, `minY`, `maxY`; `biomes`, the biomes of `biomes.bin` in index order, each `{ id, temperature }`; `possible`, every biome the generator can place, each `{ id, underground }` (tagged `c:is_underground`); `sampleMillis`. Its presence means the run succeeded. |
+| `heights.bin` | With it | One int16 per point: the ground height from the generator, heightmap `OCEAN_FLOOR_WG`, so a sea bed shows its depth. |
+| `biomes.bin` | With it | One uint16 per point: an index into `biomes` of `preview.json`. |
+| `coarse.json`, `coarse-<step>-heights.bin`, `coarse-<step>-biomes.bin` | During the run, each pass replacing the one before | A sketch, in the same form as the map at a coarser step. Its heights leave out the aquifers. |
+| `partial.json`, `partial-heights.bin`, `partial-biomes.bin` | During the full pass, once a second | The points sampled so far, with the grid of `preview.json`, `done` and `total` tiles, and `biomes`, every biome the generator can place; a biome of `0xFFFF` is a point not sampled yet. |
+| `progress.json` | Every half second while the game runs | `{ pass, step, done, total }`: the pass under way (`sketch`, `map`, or `extras`), its step in blocks, and how many of its tiles of 16 x 16 points are done. |
+| `section.json`, `section-<n>.bin` | After a full map | Up to four cuts, west to east across the whole square, along rows of the map chosen for the most varied ground. One byte per block, row by row from the top of the world down: 0 air, 1 rock, 2 water, 3 lava. |
+| `ores.json` | After a full map | Every placement of an ore feature with its steps, as a data pack writes them, and for each biome the placements it lists once every mod has added its own. |
+| `structures.json` | After a full map | `structures`, every structure the overworld can place, `{ id, set, step }`; `points`, one row per start inside the square, `[index into structures, x, z]` in blocks. |
+| `timing.json` | At the end | `{ workMillis }`: how long the mod's own work took, without the game's start and stop. |
+| `run.json` | At the end, written by the script | `{ seed, tectonic }`: what the run was asked, a switch as 1 or 0. |
+
+[docs/setup.md](docs/setup.md) tells how each pass is made and what each file leaves out.
 
 ## Timings
 
-Measured on the machine it was written on (2026-11-11, 8 threads used of 16, since raised to 12, which shortens the map's part of each wait), on a seed whose small world folder already existed:
+Measured on the machine it was written on (2026-11-11, 8 threads used of 16, since raised to 12), on a seed whose small world folder already existed:
 
-| Area | First sketch on screen | Finer sketches | Full map |
+| Area | First sketch | Finer sketches | Full map |
 | --- | --- | --- | --- |
 | 4096 blocks | 12 s | | 17 s |
 | 8192 blocks (default) | 12 s | 15 s | 35 s |
@@ -110,36 +86,27 @@ A coarser detail, measured on the same machine on 2026-11-13 (seed cap-1):
 | 8192 blocks | 16 s | 19 s |
 | 65536 blocks | 57 s (125 biomes of 140) | 3 min 26 s (126 of 140) |
 
-Past 32768 blocks the full map is not offered: a coarser detail only.
-
-Another machine has its own pace: the page shows no wait before a first run at a detail, then the one this machine took, scaled to the area. With every thread at the normal priority the widest map took 3 min 20 s here, and the machine stalled for seconds at a time meanwhile.
-
-Most of the first sketch's wait is the server start. A seed run for the first time took about 10 seconds more, once (22 s to the sketch, 32 s to the map, at 8192 blocks). The first run of all also downloads the game's server, and from the repository builds the mod: a few minutes.
+Most of the first sketch's wait is the server start. A seed run for the first time took about 10 seconds more, once. The first run of all also downloads the game's server and builds the mod: a few minutes.
 
 ## Limits
 
-- No trees or caves: the map answers "how big, how high, how much", not "is this biome pleasant to walk in".
-- A structure is the point where it would start, not what it covers, and nothing of what a real chunk does to it later. Compared once with a real world of the same pack: the 111 starts its chunks held were all at the point given, 43 of them one chunk aside, the centre of a first piece that lies next to its start chunk.
-- The ores of a cut are a play of the rules on the real ground, not the blocks a world would hold: compared once with real chunks, it gave a fifth to a half more ore. It compares one setting with another.
-- The sketches skip the aquifers (the game's underground water and lava) and read fewer points: close to the full map, not proven exact.
-- Windows only: the scripts lean on PowerShell, and the Windows registry to find the browser (Brave or Edge).
-- One run at a time on a machine: a second one waits for the first.
-- A game folder may hold mods made for the game's window only. Fabric leaves them alone on the preview's server when they say so; one that does not could stop it. Seen working with a folder of five mods, not with a large pack.
+- No trees or caves on the map: it answers "how big, how high, how much", not "is this biome pleasant to walk in".
+- A structure is the point where it would start, not what it covers. Compared once with a real world of the same pack: the 111 starts its chunks held were all at the point given, 43 of them one chunk aside.
+- The sketches skip the aquifers and read fewer points: close to the full map, not proven exact.
+- A game folder may hold mods made for the game's window only. Fabric leaves them alone on a server when they say so; one that does not could stop it.
 
 ## What is where
 
-| Folder | What it holds |
+| Path | What it holds |
 | --- | --- |
 | `mod/` | The Fabric mod that samples the generator, one Gradle build. |
-| `page/` | The page, one HTML file. |
-| `World Preview.cmd` | The file to double-click. |
-| `scripts/` | `start.ps1` (the double-click start, which asks for the game folder), `serve.ps1` (the page's server), `preview.ps1` (one run), `package.ps1` (the ready-to-use zip), `capture.ps1` and `boards.ps1` (pictures of the page). |
-| `docs/` | [How it works](docs/setup.md), and `media/` for the illustrations. |
-
-The illustrations above are real pictures of the page, composed by `scripts/boards.ps1` from `docs/media/boards.html`. None is retouched.
+| `scripts/preview.ps1` | One run. |
+| `scripts/common.ps1` | Its helpers: the pack, Java, the Fabric server, filling the work folder. |
+| `scripts/serve.ps1`, `page/preview.html` | The former page and its local server, kept only while Outpost Tools' page launcher still shows them in a frame. Not part of the engine; they go once that launcher stops calling them. |
+| `docs/setup.md` | How a run works, pass by pass. |
 
 ## Licence
 
-The code, the page and the scripts of this repository are under the [GNU General Public License v3.0](LICENSE). The mods of the pack you preview are not part of it: each keeps its own licence. Minecraft is a trademark of Mojang; this project is not affiliated with Mojang or Microsoft.
+The code and the scripts of this repository are under the [GNU General Public License v3.0](LICENSE). The mods of the pack you run it with are not part of it: each keeps its own licence. Minecraft is a trademark of Mojang; this project is not affiliated with Mojang or Microsoft.
 
-The page is set in [IBM Plex Mono](https://github.com/IBM/plex), by IBM under the [SIL Open Font License 1.1](https://github.com/IBM/plex/blob/master/LICENSE.txt), embedded in the page as IBM's own Latin1 and Pi cuts (release `@ibm/plex-mono@2.5.0`). No font or texture of the game itself is used.
+The page is set in [IBM Plex Mono](https://github.com/IBM/plex), by IBM under the [SIL Open Font License 1.1](https://github.com/IBM/plex/blob/master/LICENSE.txt), embedded in the page (release `@ibm/plex-mono@2.5.0`).

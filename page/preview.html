@@ -2870,7 +2870,7 @@
   }
   if (world && chosen.biomes.size) { showChoice(); paint(); }
   for (const key of (asked.get('view') || '').split(',')) $('tabs').querySelector(`[data-view="${key}"]`)?.click();
-  // Tells a capture that everything asked for is drawn (see scripts/capture.ps1).
+  // Tells a program taking a picture of the page that everything asked for is drawn.
   await drawing3d;
   await drawingCut;
   document.documentElement.dataset.ready = '1';
