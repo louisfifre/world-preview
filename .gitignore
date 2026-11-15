@@ -17,3 +17,6 @@ build/
 # OS
 Thumbs.db
 .DS_Store
+
+# The Rust driver's build output
+driver/target/
