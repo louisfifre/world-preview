@@ -1,15 +1,14 @@
 <#
 .SYNOPSIS
-Opens the world preview page in a bare browser window, and serves it.
+Serves the legacy preview page to the page launcher of Outpost Tools, which shows it in a frame.
 
 .DESCRIPTION
-A web page cannot start a program or read a file, so this script is the small local server behind
-the page. It serves page/preview.html on localhost only, gives it the pack's Tectonic values, runs
-preview.ps1 in the background when the page asks for a run, and hands the page the results.
-The window is the application: it opens on a browser profile of its own (run\browser), and closing it
-stops the server and any preview being computed. Opening it again while it runs shows that window.
-The page also pings while it is open, so a server whose window it cannot follow (another page holds
-the preview, or no browser could show a bare window) stops once the pings stop.
+Not part of the engine: it stays only while Outpost Tools' page launcher still starts it, and goes
+once that launcher stops. It opens no window of its own. A web page cannot start a program or read a
+file, so this script is the small local server behind page/preview.html: it serves the page on
+localhost only, gives it the pack's Tectonic values, runs preview.ps1 in the background when the page
+asks for a run, and hands the page the results. It stops when -ParentPid ends, or once the page's
+pings stop.
 
 .PARAMETER Pack
 The folder holding the pack's pack.toml, as in preview.ps1. Read from WORLD_PREVIEW_PACK when omitted.
@@ -18,7 +17,7 @@ The folder holding the pack's pack.toml, as in preview.ps1. Read from WORLD_PREV
 The work folder of the throwaway server, as in preview.ps1. run\preview when omitted.
 
 .PARAMETER Out
-Where this server reads and writes previews, <Dir>\out when omitted. The capture script gives its own.
+Where this server reads and writes previews, <Dir>\out when omitted.
 
 .PARAMETER Exports
 Where the page's Export button writes, one folder per export. run\exports when omitted: a folder of
@@ -26,11 +25,10 @@ its own, apart from the throwaway server's files, so an export is easy to find a
 can be emptied without losing one.
 
 .PARAMETER Port
-The local port. A second server on another port (the capture script starts one) lives beside the
-first without touching it.
+The local port.
 
 .PARAMETER NoWindow
-Serve without opening the browser window: for tests, and for a page that shows the preview inside its own.
+Changes nothing: there is no window any more. Kept because Outpost Tools passes it.
 
 .PARAMETER ParentPid
 Stop when that process ends: the program that started this server and shows the preview in its own
@@ -50,25 +48,43 @@ param(
 
 $Origin  = "http://localhost:$Port"
 $Page    = Join-Path $RepoRoot 'page\preview.html'
-$Size    = '1400,940'
-$BrowserProfile = Join-Path $RepoRoot 'run\browser'
-$IdleMs  = 90000   # the page pings every 2 s; a hidden window may be slowed down by the browser
+$IdleMs  = 90000   # the page pings every 2 s; a hidden frame may be slowed down by the browser
 
-function Open-Window {
-    if ($NoWindow) { return }
-    Open-AppWindow "$Origin/" $Size $BrowserProfile
+function Get-PackTectonic([string]$Pack) {
+    # Every setting of the pack's Tectonic config, read from the file itself so that none is left out without
+    # a word: where the page's controls start. Each comes with its group, its kind (a number, or a switch
+    # given as 1 or 0) and the comment Tectonic writes above it, if any. Tectonic writes one setting per line,
+    # its groups one level deep. A name met twice would be ambiguous for a run, which replaces a value by
+    # its name: it is listed apart and left out.
+    $settings = [ordered]@{}
+    $duplicates = @()
+    $group = ''; $comment = ''
+    foreach ($line in [IO.File]::ReadAllLines((Join-Path $Pack 'config\tectonic.json'))) {
+        if ($line -match '^\s*//\s*(.*)$') { $comment = $Matches[1]; continue }
+        if ($line -match '^\s*"([\w-]+)"\s*:\s*\{') { $group = $Matches[1]; $comment = ''; continue }
+        if ($line -match '^\s*"([\w-]+)"\s*:\s*(-?[0-9.eE+-]+|true|false)\s*,?\s*$') {
+            $key, $raw = $Matches[1], $Matches[2]
+            # The file's own version number, not a setting of the world.
+            if ($key -eq 'minor_version') { $comment = ''; continue }
+            if ($settings.Contains($key)) { $duplicates += $key }
+            else {
+                $switch = $raw -in 'true', 'false'
+                $settings[$key] = @{ key = $key; group = $group; kind = $(if ($switch) { 'switch' } else { 'number' })
+                    value = $(if ($switch) { [double]($raw -eq 'true') } else { [double]::Parse($raw, [Globalization.CultureInfo]::InvariantCulture) })
+                    hint = $comment }
+            }
+        }
+        $comment = ''
+    }
+    foreach ($key in $duplicates) { $settings.Remove($key) }
+    @{ settings = @($settings.Values); duplicates = @($duplicates | Select-Object -Unique) }
 }
 
 $listener = [Net.HttpListener]::new()
 $listener.Prefixes.Add("$Origin/")
-try { $listener.Start() }
-catch {
-    # The port is taken: a preview server is already running, so only show its window, or open one on it.
-    if (-not $NoWindow -and -not (Show-AppWindow $BrowserProfile)) { $null = Open-Window }
-    return
-}
+# The port is taken: a preview server is already running, and the host's frame is already served.
+try { $listener.Start() } catch { return }
 
-# Checked once the port is ours: a wrong pack or folder stops here, before any window opens.
 try {
     $Pack = Resolve-Pack $Pack
     if (-not $Dir) { $Dir = $DefaultDir }
@@ -76,7 +92,8 @@ try {
     $Dir = [IO.Path]::GetFullPath($Dir)
     if (-not $Out) { $Out = Join-Path $Dir 'out' }
     $Out = [IO.Path]::GetFullPath($Out)
-    if (-not $Exports) { $Exports = $DefaultExports }
+    # Beside the work folder rather than in it, so the work folder can be emptied without losing an export.
+    if (-not $Exports) { $Exports = Join-Path $RepoRoot 'run\exports' }
     $Exports = [IO.Path]::GetFullPath($Exports)
 } catch { $listener.Stop(); throw }
 
@@ -95,84 +112,6 @@ function Send-Bytes($context, [int]$status, [byte[]]$bytes, [string]$type) {
 
 function Send-Reply($context, [int]$status, [string]$body = '{}', [string]$type = 'application/json') {
     Send-Bytes $context $status ([Text.Encoding]::UTF8.GetBytes($body)) "$type; charset=utf-8"
-}
-
-# The sentences of the tray icon.
-$TrayText = @{
-    idle    = 'World preview'
-    busy    = 'World preview: computing a map'
-    preview = 'Open the preview'
-    quit    = 'Quit'
-    ready   = 'The world preview is ready.'
-    failed  = 'The world preview failed.'
-}
-
-function Start-Tray {
-    # It lives on its own thread, because this one spends its time waiting for requests.
-    # The two threads only share this table: the server writes Busy, Notify and Stop, the icon writes Ask.
-    $shared = [hashtable]::Synchronized(@{ Busy = $false; Notify = $null; Ask = $null; Stop = $false; Text = $TrayText })
-    $runspace = [runspacefactory]::CreateRunspace()
-    $runspace.ApartmentState = 'STA'
-    $runspace.Open()
-    $runspace.SessionStateProxy.SetVariable('shared', $shared)
-    $shell = [powershell]::Create()
-    $shell.Runspace = $runspace
-    $null = $shell.AddScript({
-        Add-Type -AssemblyName System.Windows.Forms, System.Drawing
-        # A block seen from above its corner, the same as the icon of the page: top, left side, right side.
-        function New-BlockIcon([string]$top, [string]$left, [string]$right) {
-            $bitmap = [Drawing.Bitmap]::new(32, 32)
-            $pen = [Drawing.Graphics]::FromImage($bitmap)
-            $pen.SmoothingMode = 'AntiAlias'
-            # The leading commas keep each face whole: without them the three lists pour into one flat
-            # list, nothing is drawn, and the icon is an empty square.
-            $faces = @(
-                , @($top,   @(16, 2), @(30, 9),  @(16, 16), @(2, 9))
-                , @($left,  @(2, 9),  @(16, 16), @(16, 30), @(2, 23))
-                , @($right, @(30, 9), @(16, 16), @(16, 30), @(30, 23))
-            )
-            foreach ($face in $faces) {
-                $brush = [Drawing.SolidBrush]::new([Drawing.ColorTranslator]::FromHtml($face[0]))
-                $points = [Drawing.PointF[]]($face[1..4] | ForEach-Object { [Drawing.PointF]::new($_[0], $_[1]) })
-                $pen.FillPolygon($brush, $points)
-            }
-            [Drawing.Icon]::FromHandle($bitmap.GetHicon())
-        }
-        $idle = New-BlockIcon '#7fb850' '#8b6344' '#6b4b33'
-        $busy = New-BlockIcon '#e5a44e' '#a8742f' '#75501f'
-        $text = $shared.Text
-        $icon = [Windows.Forms.NotifyIcon]::new()
-        $icon.Icon = $idle
-        $icon.Text = $text.idle
-        $menu = [Windows.Forms.ContextMenuStrip]::new()
-        foreach ($ask in 'preview', 'quit') {
-            $item = $menu.Items.Add($text[$ask])
-            $item.Tag = $ask
-            $item.add_Click({ param($source) $shared.Ask = $source.Tag })
-        }
-        $icon.ContextMenuStrip = $menu
-        $icon.add_DoubleClick({ $shared.Ask = 'preview' })
-        $icon.Visible = $true
-        $state = @{ Busy = $false }
-        $timer = [Windows.Forms.Timer]::new()
-        $timer.Interval = 250
-        $timer.add_Tick({
-            if ($shared.Stop) { $timer.Stop(); $icon.Visible = $false; $icon.Dispose(); [Windows.Forms.Application]::ExitThread(); return }
-            if ($shared.Busy -ne $state.Busy) {
-                $state.Busy = $shared.Busy
-                $icon.Icon = if ($state.Busy) { $busy } else { $idle }
-                $icon.Text = if ($state.Busy) { $text.busy } else { $text.idle }
-            }
-            if ($shared.Notify) {
-                $icon.ShowBalloonTip(4000, $text.idle, $shared.Notify, 'None')
-                $shared.Notify = $null
-            }
-        })
-        $timer.Start()
-        [Windows.Forms.Application]::Run()
-    })
-    $shared.Done = $shell.BeginInvoke().AsyncWaitHandle
-    $shared
 }
 
 # The preview being computed, if any: its background shell, the handle that says when it has ended, and
@@ -229,7 +168,6 @@ function Test-PreviewEnded {
     return $true
 }
 
-$window = Open-Window
 # A parent already gone would leave this server waiting for pings from a page that no longer exists.
 $parent = if ($ParentPid) { Get-Process -Id $ParentPid -ErrorAction SilentlyContinue }
 if ($ParentPid -and -not $parent) { $listener.Stop(); return }
@@ -237,12 +175,11 @@ try {
     :serve while ($true) {
         $null = Test-PreviewEnded
         $pending = $listener.GetContextAsync()
-        # Waits in short slices, so a closed window and the end of a preview are answered at once.
+        # Waits in short slices, so a host that quit and the end of a preview are answered at once.
         $idle = [Diagnostics.Stopwatch]::StartNew()
         while (-not $pending.Wait(300)) {
             if (Test-PreviewEnded) { $idle.Restart() }
-            # Closing the window quits, a preview under way too: the page asked first.
-            if ($window -and $window.HasExited) { break serve }
+            # The host quitting stops this server, a preview under way too: the host asked first.
             if ($parent -and $parent.HasExited) { break serve }
             # A preview under way keeps the server up: the time without pings counts from its end.
             if (-not $Run -and $idle.ElapsedMilliseconds -gt $IdleMs) { break serve }
@@ -359,7 +296,7 @@ try {
     }
 } finally {
     $listener.Stop()
-    # Quitting stops the preview being computed: without a window, nobody could see it go on, nor stop it,
+    # Quitting stops the preview being computed: without a host, nobody could see it go on, nor stop it,
     # and a wide one takes the machine for many minutes.
     if ($Run) {
         Stop-RunJava

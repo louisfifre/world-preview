@@ -42,9 +42,9 @@ sketch, which is then the map. A map stopped there has no cuts and no structures
 whatever the detail, and its heights leave out the aquifers, like every sketch. Step when omitted.
 
 .PARAMETER Out
-Where the result lands, <Dir>\out when omitted. A second caller (the capture script) passes its
-own folder, so it never replaces the preview someone is looking at. The server folder stays shared:
-one run at a time, the next one waits.
+Where the result lands, <Dir>\out when omitted. A second caller passes its own folder, so it never
+replaces the preview someone is looking at. The server folder stays shared: one run at a time, the
+next one waits.
 
 .PARAMETER Mods
 Jars added to the server for this run, on top of the pack's mods: a mod being worked on, which the
@@ -81,8 +81,8 @@ if (-not ((Test-Path $eula) -and ((Get-Content $eula -Raw) -match '(?m)^eula=tru
     throw "EULA: the preview server needs the Minecraft EULA accepted in its own folder. Read https://aka.ms/MinecraftEULA, then write the line eula=true in $eula"
 }
 
-# 1. The mod jar. The ready-to-use folder (scripts/package.ps1) ships it built and without its sources:
-# it is taken as it is. Next to its sources, it is rebuilt when they are newer.
+# 1. The mod jar. A copy shipped without the sources, the jar built beforehand, takes it as it is.
+# Next to its sources, it is rebuilt when they are newer.
 $modRoot = Join-Path $RepoRoot 'mod'
 $libs = Join-Path $modRoot 'build\libs'
 $jar = Get-ChildItem $libs -Filter 'world-preview-*.jar' -ErrorAction SilentlyContinue |

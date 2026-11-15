@@ -1,6 +1,6 @@
-# Shared helpers for the world-preview scripts. Dot-source it: . "$PSScriptRoot\common.ps1"
-# Everything a person runs (start, serve, preview) must work under Windows PowerShell 5.1, the one
-# every Windows has: nobody should install a shell to see a map.
+# Shared helpers of the engine's scripts. Dot-source it: . "$PSScriptRoot\common.ps1"
+# The scripts must work under Windows PowerShell 5.1, the one every Windows has: an interface that calls
+# the engine should not have to install a shell first.
 
 $ErrorActionPreference = 'Stop'
 # Windows PowerShell started from PowerShell 7 inherits its module folders, and takes PowerShell 7's copies of its
@@ -19,8 +19,6 @@ $Bootstrap = Join-Path $ToolsDir 'packwiz-installer-bootstrap.jar'
 $BootstrapUrl = 'https://github.com/packwiz/packwiz-installer-bootstrap/releases/download/v0.0.3/packwiz-installer-bootstrap.jar'
 # The default work folder: inside the repository and ignored by git, so a first try needs no choice.
 $DefaultDir = Join-Path $RepoRoot 'run\preview'
-# Where exports go unless told otherwise: beside the work folder rather than in it, among nothing else.
-$DefaultExports = Join-Path $RepoRoot 'run\exports'
 
 function Resolve-Pack([string]$Pack) {
     # The pack is the one input with no sensible default: -Pack first, then WORLD_PREVIEW_PACK.
@@ -36,42 +34,12 @@ function Resolve-Pack([string]$Pack) {
     }
     if (-not $found) { throw "No mods folder and no pack.toml in $Pack. Choose the game folder, the one that holds mods and config." }
     if (-not (Test-Path (Join-Path $found 'config\tectonic.json'))) {
-        throw "No config\tectonic.json in $found. The sliders are Tectonic's values: the mods must include Tectonic, and the game must have started once with it so that its config exists."
+        throw "No config\tectonic.json in $found. A run's values are Tectonic's: the mods must include Tectonic, and the game must have started once with it so that its config exists."
     }
     return $found
 }
 
 function Test-PackwizPack([string]$Pack) { Test-Path (Join-Path $Pack 'pack.toml') }
-
-function Get-PackTectonic([string]$Pack) {
-    # Every setting of the pack's Tectonic config, read from the file itself so that none is left out without
-    # a word: where the page's controls start. Each comes with its group, its kind (a number, or a switch
-    # given as 1 or 0) and the comment Tectonic writes above it, if any. Tectonic writes one setting per line,
-    # its groups one level deep. A name met twice would be ambiguous for a run, which replaces a value by
-    # its name: it is listed apart and left out.
-    $settings = [ordered]@{}
-    $duplicates = @()
-    $group = ''; $comment = ''
-    foreach ($line in [IO.File]::ReadAllLines((Join-Path $Pack 'config\tectonic.json'))) {
-        if ($line -match '^\s*//\s*(.*)$') { $comment = $Matches[1]; continue }
-        if ($line -match '^\s*"([\w-]+)"\s*:\s*\{') { $group = $Matches[1]; $comment = ''; continue }
-        if ($line -match '^\s*"([\w-]+)"\s*:\s*(-?[0-9.eE+-]+|true|false)\s*,?\s*$') {
-            $key, $raw = $Matches[1], $Matches[2]
-            # The file's own version number, not a setting of the world.
-            if ($key -eq 'minor_version') { $comment = ''; continue }
-            if ($settings.Contains($key)) { $duplicates += $key }
-            else {
-                $switch = $raw -in 'true', 'false'
-                $settings[$key] = @{ key = $key; group = $group; kind = $(if ($switch) { 'switch' } else { 'number' })
-                    value = $(if ($switch) { [double]($raw -eq 'true') } else { [double]::Parse($raw, [Globalization.CultureInfo]::InvariantCulture) })
-                    hint = $comment }
-            }
-        }
-        $comment = ''
-    }
-    foreach ($key in $duplicates) { $settings.Remove($key) }
-    @{ settings = @($settings.Values); duplicates = @($duplicates | Select-Object -Unique) }
-}
 
 function Get-FabricServerJar([string]$Pack, [string]$Dir) {
     # The Fabric server launcher, downloaded once per folder. A packwiz pack names its versions; a game
@@ -91,68 +59,6 @@ function Get-FabricServerJar([string]$Pack, [string]$Dir) {
         Invoke-WebRequest $url -OutFile $jar -UseBasicParsing
     }
     return $jar
-}
-
-function Find-AppBrowser {
-    # A Chromium browser can show a page as a bare window (--app) and take pictures of one (--headless). Brave first, then Edge.
-    foreach ($name in 'brave.exe', 'msedge.exe') {
-        foreach ($hive in 'HKCU:', 'HKLM:') {
-            $key = "$hive\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\$name"
-            $exe = (Get-ItemProperty $key -ErrorAction SilentlyContinue).'(default)'
-            if ($exe -and (Test-Path $exe)) { return $exe }
-        }
-    }
-}
-
-# The page's window is the application: it opens on a browser profile of its own, so it never touches the
-# person's own browser. Sharing their profile meant joining it by the right path: the same folder reached by
-# another one (a portable install links its own into the default place) locks the browser the person opens
-# next out of its own profile, and it then shows no window at all. A profile of its own is also a browser
-# process of its own, which ends when the window closes: the server watches it and quits with it.
-function Get-AppBrowserProcess([string]$ProfileDir) {
-    # The browser's main process for this profile: the only one without --type= in its command line.
-    $browser = Find-AppBrowser
-    if (-not $browser) { return }
-    Get-CimInstance Win32_Process -Filter "Name='$(Split-Path $browser -Leaf)'" |
-        Where-Object { $_.CommandLine -and $_.CommandLine -notmatch '--type=' -and
-            $_.CommandLine.IndexOf($ProfileDir, [StringComparison]::OrdinalIgnoreCase) -ge 0 } |
-        ForEach-Object { Get-Process -Id $_.ProcessId -ErrorAction SilentlyContinue } |
-        Select-Object -First 1
-}
-
-function Show-AppWindow([string]$ProfileDir) {
-    # Brings the window already open on this profile to the front; false when there is none. Opening the
-    # application twice then shows the one window rather than a second.
-    $process = Get-AppBrowserProcess $ProfileDir
-    if (-not $process -or $process.MainWindowHandle -eq [IntPtr]::Zero) { return $false }
-    if (-not ('AppWindow.Native' -as [type])) {
-        Add-Type -Namespace AppWindow -Name Native -MemberDefinition @'
-[DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr window);
-[DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr window, int how);
-[DllImport("user32.dll")] public static extern bool IsIconic(IntPtr window);
-'@
-    }
-    # 9 restores a window from the taskbar; a window already on screen keeps its size and place.
-    if ([AppWindow.Native]::IsIconic($process.MainWindowHandle)) { $null = [AppWindow.Native]::ShowWindow($process.MainWindowHandle, 9) }
-    $null = [AppWindow.Native]::SetForegroundWindow($process.MainWindowHandle)
-    return $true
-}
-
-function Open-AppWindow([string]$Url, [string]$Size, [string]$ProfileDir) {
-    # Returns the browser process the window lives in, or nothing when no browser can show a bare window
-    # and the page went to the default browser instead: the pings alone then say when it is closed.
-    $browser = Find-AppBrowser
-    if (-not $browser) { Start-Process $Url; return }
-    $null = New-Item -ItemType Directory -Force $ProfileDir
-    # A new profile would greet its first start with the browser's welcome and a question about the default browser.
-    Start-Process $browser -ArgumentList "--app=$Url", "--window-size=$Size", "--user-data-dir=`"$ProfileDir`"", '--no-first-run', '--no-default-browser-check'
-    # The process started above hands the window over and leaves when the profile already runs: the one to
-    # watch is the profile's own, found once it is up.
-    for ($i = 0; $i -lt 40; $i++) {
-        $process = Get-AppBrowserProcess $ProfileDir
-        if ($process) { return $process }
-        Start-Sleep -Milliseconds 250
-    }
 }
 
 function Test-Java([string]$Exe) {
