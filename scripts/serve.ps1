@@ -44,9 +44,24 @@ param(
     [int]$ParentPid
 )
 
-. "$PSScriptRoot\common.ps1"
+$ErrorActionPreference = 'Stop'
+$RepoRoot = Split-Path $PSScriptRoot -Parent
+$DefaultDir = Join-Path $RepoRoot 'run\preview'
 
-$Origin  = "http://localhost:$Port"
+function Resolve-Pack([string]$Pack) {
+    # The same lookup as the engine's (driver/), which checks the pack again at each run: here it only
+    # finds the Tectonic config the page's controls start from.
+    if (-not $Pack) { $Pack = $env:WORLD_PREVIEW_PACK }
+    if (-not $Pack) { throw 'No pack given. Pass -Pack <a game folder or a packwiz pack>, or set WORLD_PREVIEW_PACK.' }
+    if (-not (Test-Path $Pack -PathType Container)) { throw "No such folder: $Pack" }
+    $Pack = (Resolve-Path $Pack).Path
+    foreach ($folder in $Pack, (Join-Path $Pack 'minecraft'), (Join-Path $Pack '.minecraft')) {
+        if (Test-Path (Join-Path $folder 'config\tectonic.json')) { return $folder }
+    }
+    throw "No config\tectonic.json in $Pack. A run's values are Tectonic's: the mods must include Tectonic, and the game must have started once with it."
+}
+
+$Origin = "http://localhost:$Port"
 $Page    = Join-Path $RepoRoot 'page\preview.html'
 $IdleMs  = 90000   # the page pings every 2 s; a hidden frame may be slowed down by the browser
 
