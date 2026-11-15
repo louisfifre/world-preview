@@ -10,8 +10,10 @@ mod process;
 mod tectonic;
 mod win;
 
-use serde_json::Value;
+pub use serde_json::Value;
 use std::fmt;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Instant, SystemTime};
@@ -62,7 +64,13 @@ pub struct Options {
     pub detail: Option<u32>,
     /// Jars added to the server for this run; WORLD_PREVIEW_MODS (semicolon-separated) when empty.
     pub mods: Vec<PathBuf>,
+    /// Set from another thread, it ends the run: the server is killed and `run` returns the error `STOPPED`.
+    /// The program needs none (killing it ends the server through the job object); a library caller does.
+    pub stop: Option<Arc<AtomicBool>>,
 }
+
+/// The error of a run ended by `Options::stop`.
+pub const STOPPED: &str = "The run was stopped.";
 
 impl Options {
     pub fn new(repo: PathBuf) -> Self {
@@ -77,6 +85,7 @@ impl Options {
             step: 16,
             detail: None,
             mods: Vec::new(),
+            stop: None,
         }
     }
 }
@@ -333,7 +342,13 @@ pub fn run(options: &Options, log: &mut dyn FnMut(&str)) -> Result<PathBuf> {
         launcher.to_string_lossy().into_owned(),
         "nogui".into(),
     ];
-    process::run_java(&java.get()?, &dir, &log_file, &args, true)?;
+    // A stop asked while the folder was being prepared is taken before the server starts.
+    let stop = options.stop.as_deref();
+    if stop.is_some_and(|s| s.load(Ordering::Relaxed)) {
+        return Err(Error::new(STOPPED));
+    }
+    log("Starting the server");
+    process::run_java(&java.get()?, &dir, &log_file, &args, true, stop)?;
     if !out.join("preview.json").exists() {
         return Err(Error::new(format!("The preview server ended without a result. See {}", log_file.display())));
     }

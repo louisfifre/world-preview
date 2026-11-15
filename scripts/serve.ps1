@@ -6,15 +6,15 @@ Serves the legacy preview page to the page launcher of Outpost Tools, which show
 Not part of the engine: it stays only while Outpost Tools' page launcher still starts it, and goes
 once that launcher stops. It opens no window of its own. A web page cannot start a program or read a
 file, so this script is the small local server behind page/preview.html: it serves the page on
-localhost only, gives it the pack's Tectonic values, runs preview.ps1 in the background when the page
-asks for a run, and hands the page the results. It stops when -ParentPid ends, or once the page's
-pings stop.
+localhost only, gives it the pack's Tectonic values, runs the driver (world-preview.exe, built here
+when it is missing or stale) in the background when the page asks for a run, and hands the page the
+results. It stops when -ParentPid ends, or once the page's pings stop.
 
 .PARAMETER Pack
-The folder holding the pack's pack.toml, as in preview.ps1. Read from WORLD_PREVIEW_PACK when omitted.
+The folder holding the pack's pack.toml, as the driver's --pack. Read from WORLD_PREVIEW_PACK when omitted.
 
 .PARAMETER Dir
-The work folder of the throwaway server, as in preview.ps1. run\preview when omitted.
+The work folder of the throwaway server, as the driver's --dir. run\preview when omitted.
 
 .PARAMETER Out
 Where this server reads and writes previews, <Dir>\out when omitted.
@@ -141,11 +141,39 @@ $LastFailure = $null
 $LastStopped = $false
 
 function Stop-RunJava {
-    # The Java of the run is a child of this process. It generates no chunk, so nothing is left
-    # half-written but a throwaway world folder; the run then ends by itself, which frees its folder.
-    Get-CimInstance Win32_Process -Filter "ParentProcessId=$PID AND Name LIKE 'java%'" |
+    # The run is the driver, a child of this process; its server dies with it, through the driver's job
+    # object. It generates no chunk, so nothing is left half-written but a throwaway world folder.
+    Get-CimInstance Win32_Process -Filter "ParentProcessId=$PID AND Name = 'world-preview.exe'" |
         ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
 }
+
+# The driver, world-preview.exe, built here when it is missing or older than its sources: a run is that
+# program, so a page asking for one never waits on a build.
+function Get-Driver {
+    $driverDir = Join-Path $RepoRoot 'driver'
+    $exe = Join-Path $driverDir 'target\release\world-preview.exe'
+    $stale = -not (Test-Path $exe)
+    if (-not $stale) {
+        $built = (Get-Item $exe).LastWriteTime
+        $targetDir = Join-Path $driverDir 'target'
+        $stale = [bool](Get-ChildItem $driverDir -Recurse -File | Where-Object {
+            -not $_.FullName.StartsWith($targetDir, [StringComparison]::OrdinalIgnoreCase) -and $_.LastWriteTime -gt $built
+        } | Select-Object -First 1)
+    }
+    if ($stale) {
+        if (-not (Get-Command cargo -CommandType Application -ErrorAction SilentlyContinue)) {
+            throw 'The driver has to be built and cargo was not found. Install Rust from https://rustup.rs'
+        }
+        Write-Host 'Building the world-preview driver'
+        $previous = $ErrorActionPreference
+        $ErrorActionPreference = 'Continue'
+        try { & cargo build --release -q --manifest-path (Join-Path $driverDir 'Cargo.toml') 2>&1 | ForEach-Object { Write-Host $_ } }
+        finally { $ErrorActionPreference = $previous }
+        if ($LASTEXITCODE -ne 0) { throw "The world-preview driver did not build (cargo exited with $LASTEXITCODE)." }
+    }
+    $exe
+}
+$Driver = Get-Driver
 
 function Complete-Preview {
     # Answers the request that started the preview, once it has ended.
@@ -263,14 +291,26 @@ try {
                 else {
                     # The sketch, the progress and the draft of the run before must not pass for those of this one.
                     Remove-Item (Join-Path $Out 'coarse.json'), (Join-Path $Out 'progress.json'), (Join-Path $Out 'partial.json') -ErrorAction SilentlyContinue
+                    # The driver's own arguments: a switch as true or false, a number written with a dot.
+                    $arguments = @('--repo', $RepoRoot, '--pack', $Pack, '--dir', $Dir, '--out', $Out, '--seed', $seed,
+                                   '--samples', "$samples", '--step', '16', '--detail', "$detail")
+                    foreach ($key in $tectonic.Keys) {
+                        $value = $tectonic[$key]
+                        $text = if ($value -is [bool]) { "$value".ToLower() } else { ([double]$value).ToString([Globalization.CultureInfo]::InvariantCulture) }
+                        $arguments += '--tectonic', "$key=$text"
+                    }
                     $shell = [powershell]::Create()
                     $null = $shell.AddScript({
-                        param($script, $pack, $dir, $seed, $tectonic, $samples, $detail, $out)
-                        & $script -Pack $pack -Dir $dir -Seed $seed -Tectonic $tectonic -Samples $samples -Detail $detail -Out $out *> $null
+                        param($exe, $arguments)
+                        # Its error stream is read as text: what it says there is the sentence the page shows.
+                        $errors = @(& $exe @arguments 2>&1 | Where-Object { $_ -is [Management.Automation.ErrorRecord] } | ForEach-Object { $_.Exception.Message })
+                        if ($LASTEXITCODE -ne 0) {
+                            if ($errors.Count) { throw ($errors -join "`n") }
+                            throw "The world-preview driver failed (code $LASTEXITCODE)."
+                        }
                     })
-                    foreach ($argument in "$PSScriptRoot\preview.ps1", $Pack, $Dir, $seed, $tectonic, $samples, $detail, $Out) {
-                        $null = $shell.AddArgument($argument)
-                    }
+                    $null = $shell.AddArgument($Driver)
+                    $null = $shell.AddArgument($arguments)
                     $Run = @{ Shell = $shell; Handle = $shell.BeginInvoke(); Context = $context
                               Seed = $seed; Samples = $samples; Detail = $detail; Tectonic = $asked; Started = Get-Date }
                 }
