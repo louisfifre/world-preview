@@ -1,10 +1,12 @@
 # world-preview
 
+<img src="docs/media/board-hero.png" alt="World preview. See the world a seed and its terrain settings give, before anyone plays in it. The game's own generator: a first sketch in about 12 seconds, the map in about 35." width="100%">
+
 An engine that makes the maps of a Minecraft world from the game's own worldgen, without generating the world. Give it a seed, a Fabric modpack with [Tectonic](https://modrinth.com/mod/tectonic), and the Tectonic values to try: it starts a throwaway dedicated server with that pack and a small mod of its own, asks the generator what it would build on a grid, and writes the answer as files in a folder.
 
 It draws nothing. Outpost Tools, its maintainer's launcher (a repository of its own), is its interface: it runs this engine and draws the maps. Anyone else can run the engine alone and read its files, to build another interface or to measure worlds.
 
-> **Personal project.** Windows only, driven by PowerShell scripts.
+> **Personal project.** Windows only. The run is driven by a small Rust program, `world-preview.exe`, which another Rust program can also call as a library.
 
 ## What it asks the generator
 
@@ -14,9 +16,18 @@ It draws nothing. Outpost Tools, its maintainer's launcher (a repository of its 
 - **The machine stays usable.** The sampling takes three quarters of the processor's threads and runs below the normal priority.
 - **Nothing is written to the pack.** A run changes the config of its own throwaway server only.
 
+## What an interface draws from it
+
+The pictures below are maps drawn from the engine's files by its former page, before the interface moved to Outpost Tools. None is retouched.
+
+<img src="docs/media/board-views.png" alt="The same area in four views: biomes, flat land, relief, temperature." width="100%">
+<img src="docs/media/board-biomes.png" alt="Three biomes shown alone on the map, the others stepped back to grey, beside the list of biomes with their typical width and their share." width="100%">
+<img src="docs/media/board-relief.png" alt="The biome map draped over the real heights, seen from low above the sea." width="100%">
+
 ## Requirements
 
-- Windows 10 or 11. The scripts run under the Windows PowerShell that comes with it (5.1), or PowerShell 7.
+- Windows 10 or 11. `scripts/preview.ps1` runs under the Windows PowerShell that comes with it (5.1), or PowerShell 7.
+- [Rust](https://rustup.rs) the first time, to build the driver from `driver/` (`preview.ps1` builds it when it is missing or older than its sources).
 - Java 25 or newer. A Minecraft launcher that has started Minecraft 26 already holds one, and the engine finds it there (the official launcher, Prism Launcher, the Modrinth app, CurseForge); otherwise through `JAVA_HOME` and the `PATH`.
 - A JDK 25 the first time, to build the mod from `mod/` (a few minutes; the build downloads Gradle and the game).
 - The mods, for Fabric and Minecraft 26.3, with Tectonic among them. Either a **game folder**, the one a launcher plays from, which holds `mods` and `config\tectonic.json` (Tectonic writes that file the first time the game starts with it); or a [packwiz](https://packwiz.infra.link/) pack, the folder that holds `pack.toml`. The packwiz tool itself is not needed.
@@ -40,7 +51,7 @@ scripts/preview.ps1 -Pack D:\path\to\my-pack -Dir D:\path\to\work -Seed cap-1 -T
 | `-Detail` | Blocks between two points of the map: `Step` for the full map, or 2 or 4 times `Step` to stop at that sketch, which is then the map. Such a map has no cuts, no ore rules and no structures. |
 | `-Mods` | Jars added to the server on top of the pack's, for a mod being worked on. From `WORLD_PREVIEW_MODS` (paths separated by semicolons) when omitted. |
 
-The script throws on failure, never `exit`, so a caller can catch the sentence and show it. It ends with `Preview ready in <Out> (<n> s)`. One run at a time on a machine: a second one waits for the first.
+The script throws on failure, never `exit`, so a caller can catch the sentence and show it. It ends with `Preview ready in <Out> (<n> s)`. One run at a time on a machine: a second one waits for the first. If the driver stops mid-run, the throwaway server stops with it.
 
 ### The Minecraft EULA, once per work folder
 
@@ -99,9 +110,9 @@ Most of the first sketch's wait is the server start. A seed run for the first ti
 
 | Path | What it holds |
 | --- | --- |
-| `mod/` | The Fabric mod that samples the generator, one Gradle build. |
-| `scripts/preview.ps1` | One run. |
-| `scripts/common.ps1` | Its helpers: the pack, Java, the Fabric server, filling the work folder. |
+| `mod/` | The Fabric mod that samples the generator, one Gradle build; its six classes sit flat in `mod/src`. |
+| `driver/` | The driver, in Rust: one run, from the pack to the out folder. A program (`world-preview.exe`, the same parameters as `preview.ps1` written `--pack`, `--tectonic key=value`, `--mod path`…) and a library (`world_preview::run`). |
+| `scripts/preview.ps1` | One run, for a caller that starts a script: it builds the driver if needed and relays to it. |
 | `scripts/serve.ps1`, `page/preview.html` | The former page and its local server, kept only while Outpost Tools' page launcher still shows them in a frame. Not part of the engine; they go once that launcher stops calling them. |
 | `docs/setup.md` | How a run works, pass by pass. |
 
