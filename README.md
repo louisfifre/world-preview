@@ -26,8 +26,8 @@ The pictures below are maps drawn from the engine's files by its former page, be
 
 ## Requirements
 
-- Windows 10 or 11. `scripts/preview.ps1` runs under the Windows PowerShell that comes with it (5.1), or PowerShell 7.
-- [Rust](https://rustup.rs) the first time, to build the driver from `driver/` (`preview.ps1` builds it when it is missing or older than its sources).
+- Windows 10 or 11.
+- [Rust](https://rustup.rs) the first time, to build the driver from `driver/`: `cargo build --release --manifest-path driver/Cargo.toml` writes `driver/target/release/world-preview.exe`.
 - Java 25 or newer. A Minecraft launcher that has started Minecraft 26 already holds one, and the engine finds it there (the official launcher, Prism Launcher, the Modrinth app, CurseForge); otherwise through `JAVA_HOME` and the `PATH`.
 - A JDK 25 the first time, to build the mod from `mod/` (a few minutes; the build downloads Gradle and the game).
 - The mods, for Fabric and Minecraft 26.3, with Tectonic among them. Either a **game folder**, the one a launcher plays from, which holds `mods` and `config\tectonic.json` (Tectonic writes that file the first time the game starts with it); or a [packwiz](https://packwiz.infra.link/) pack, the folder that holds `pack.toml`. The packwiz tool itself is not needed.
@@ -36,22 +36,25 @@ The pictures below are maps drawn from the engine's files by its former page, be
 ## Running it
 
 ```powershell
-scripts/preview.ps1 -Pack D:\path\to\my-pack -Dir D:\path\to\work -Seed cap-1 -Tectonic @{ vertical_scale = 1.2 }
+driver/target/release/world-preview.exe --pack D:\path\to\my-pack --dir D:\path\to\work --seed cap-1 --tectonic vertical_scale=1.2
 ```
 
-| Parameter | What it is |
+| Flag | What it is |
 | --- | --- |
-| `-Pack` | A game folder or a packwiz pack. From the environment variable `WORLD_PREVIEW_PACK` when omitted. |
-| `-Dir` | The work folder of the throwaway server: its mods, its config, one small world per seed. `run\preview` inside this repository when omitted. |
-| `-Out` | Where the files land. `<Dir>\out` when omitted. |
-| `-Seed` | The world seed, as typed in the game. `cap-1` when omitted. |
-| `-Tectonic` | Values that replace those of the pack's `config/tectonic.json` for this run, by key name. A switch is `$true` or `$false`. An unknown key stops the run. |
-| `-Samples` | Grid points per side, 512 by default (8192 blocks at a step of 16). Measured up to 4096 with a coarser detail, up to 2048 for a full map. |
-| `-Step` | Blocks between two grid points, 16 by default. |
-| `-Detail` | Blocks between two points of the map: `Step` for the full map, or 2 or 4 times `Step` to stop at that sketch, which is then the map. Such a map has no cuts, no ore rules and no structures. |
-| `-Mods` | Jars added to the server on top of the pack's, for a mod being worked on. From `WORLD_PREVIEW_MODS` (paths separated by semicolons) when omitted. |
+| `--pack` | A game folder or a packwiz pack. From the environment variable `WORLD_PREVIEW_PACK` when omitted. |
+| `--dir` | The work folder of the throwaway server: its mods, its config, one small world per seed. `run\preview` inside this repository when omitted. |
+| `--out` | Where the files land. `<dir>\out` when omitted. |
+| `--seed` | The world seed, as typed in the game. `cap-1` when omitted. |
+| `--tectonic key=value` | A value that replaces that key's in the pack's `config/tectonic.json` for this run: `true`, `false` or a number. Repeatable. An unknown key stops the run. |
+| `--samples` | Grid points per side, 512 by default (8192 blocks at a step of 16). Measured up to 4096 with a coarser detail, up to 2048 for a full map. |
+| `--step` | Blocks between two grid points, 16 by default. |
+| `--detail` | Blocks between two points of the map: the step for the full map, or 2 or 4 times the step to stop at that sketch, which is then the map. Such a map has no cuts, no ore rules and no structures. |
+| `--mod` | A jar added to the server on top of the pack's, for a mod being worked on. Repeatable. From `WORLD_PREVIEW_MODS` (paths separated by semicolons) when omitted. |
+| `--repo` | This repository, when the program does not sit inside it (it looks up from its own folder for `mod/build.gradle`). |
 
-The script throws on failure, never `exit`, so a caller can catch the sentence and show it. It ends with `Preview ready in <Out> (<n> s)`. One run at a time on a machine: a second one waits for the first. If the driver stops mid-run, the throwaway server stops with it.
+On failure the program prints the sentence on its error stream and exits with code 1, so a caller can show it. It ends with `Preview ready in <out> (<n> s)`. One run at a time on a machine: a second one waits for the first. If the program is killed mid-run, the throwaway server dies with it.
+
+A Rust program can call the same run as a library instead: `world_preview::run(&options, &mut |line| ...)` (a path dependency on `driver/`), which hands each progress line to the closure as it comes and returns the out folder. `Options::stop`, a flag set from another thread, ends the run and its server; that is how Outpost Tools' native launcher runs it.
 
 ### The Minecraft EULA, once per work folder
 
@@ -111,8 +114,7 @@ Most of the first sketch's wait is the server start. A seed run for the first ti
 | Path | What it holds |
 | --- | --- |
 | `mod/` | The Fabric mod that samples the generator, one Gradle build; its six classes sit flat in `mod/src`. |
-| `driver/` | The driver, in Rust: one run, from the pack to the out folder. A program (`world-preview.exe`, the same parameters as `preview.ps1` written `--pack`, `--tectonic key=value`, `--mod path`…) and a library (`world_preview::run`). |
-| `scripts/preview.ps1` | One run, for a caller that starts a script: it builds the driver if needed and relays to it. |
+| `driver/` | The driver, in Rust: one run, from the pack to the out folder. A program (`world-preview.exe`) and a library (`world_preview::run`). |
 | `scripts/serve.ps1`, `page/preview.html` | The former page and its local server, kept only while Outpost Tools' page launcher still shows them in a frame. Not part of the engine; they go once that launcher stops calling them. |
 | `docs/setup.md` | How a run works, pass by pass. |
 
