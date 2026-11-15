@@ -14,6 +14,8 @@ the decision of whoever owns that folder, and no script writes it.
 
 Errors are thrown, never `exit`, so the page server can call this script and survive.
 
+This script only relays: the run itself is the Rust driver in driver\, built here when it is missing or older than its sources, so that the server dies with the driver if the caller quits.
+
 .PARAMETER Pack
 The folder holding the pack's pack.toml (a packwiz pack for Fabric, with Tectonic). Read from the
 environment variable WORLD_PREVIEW_PACK when omitted.
@@ -63,128 +65,55 @@ param(
     [string[]]$Mods
 )
 
-. "$PSScriptRoot\common.ps1"
-$Pack = Resolve-Pack $Pack
-if (-not $Dir) { $Dir = $DefaultDir }
-New-Item -ItemType Directory -Force $Dir | Out-Null
-$Dir = (Resolve-Path $Dir).Path
-if (-not $Out) { $Out = Join-Path $Dir 'out' }
-# The mod writes where it is told, from the server's own folder: a relative path would land in the wrong place.
-$Out = [IO.Path]::GetFullPath($Out)
-if (-not $Detail) { $Detail = $Step }
-# The mod's sketches are one point in 2 and in 4 of the full grid: the map can stop at one of them only.
-if ($Detail -notin $Step, (2 * $Step), (4 * $Step)) { throw "Detail must be $Step, $(2 * $Step) or $(4 * $Step) blocks." }
+$repo = Split-Path $PSScriptRoot -Parent
+$driverDir = Join-Path $repo 'driver'
+$exe = Join-Path $driverDir 'target\release\world-preview.exe'
 
-# Checked first, before anything is downloaded into the folder: without it the server would not start.
-$eula = Join-Path $Dir 'eula.txt'
-if (-not ((Test-Path $eula) -and ((Get-Content $eula -Raw) -match '(?m)^eula=true'))) {
-    throw "EULA: the preview server needs the Minecraft EULA accepted in its own folder. Read https://aka.ms/MinecraftEULA, then write the line eula=true in $eula"
-}
-
-# 1. The mod jar. A copy shipped without the sources, the jar built beforehand, takes it as it is.
-# Next to its sources, it is rebuilt when they are newer.
-$modRoot = Join-Path $RepoRoot 'mod'
-$libs = Join-Path $modRoot 'build\libs'
-$jar = Get-ChildItem $libs -Filter 'world-preview-*.jar' -ErrorAction SilentlyContinue |
-    Sort-Object LastWriteTime | Select-Object -Last 1
-$sources = Join-Path $modRoot 'src'
-if (-not (Test-Path $sources)) {
-    if (-not $jar) { throw "The world-preview mod is missing: no jar in $libs and no sources to build it from." }
-}
-elseif (-not $jar -or $jar.LastWriteTime -lt (Get-ChildItem $sources, (Join-Path $modRoot 'build.gradle') -Recurse -File |
-        Sort-Object LastWriteTime | Select-Object -Last 1).LastWriteTime) {
-    Write-Host 'Building the world-preview mod'
-    $env:JAVA_HOME = Split-Path (Split-Path (Find-Java))
-    Push-Location $modRoot
+# Runs a program, shows its output as it comes and throws, never exits, when it fails: its error stream
+# is read as text, because Windows PowerShell turns it into error records once it is redirected.
+function Invoke-Program([string]$File, [string[]]$Arguments, [string]$Failure) {
+    $errors = New-Object System.Collections.Generic.List[string]
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
     try {
-        & .\gradlew.bat build --console=plain -q
-        if ($LASTEXITCODE -ne 0) { throw 'The world-preview mod did not build.' }
-    } finally { Pop-Location }
-    $jar = Get-ChildItem $libs -Filter 'world-preview-*.jar' | Sort-Object LastWriteTime | Select-Object -Last 1
-}
-
-# One run at a time on this machine: two runs in one folder would overwrite each other's config, and
-# two servers would ask for the same port. The second one waits.
-$lock = [Threading.Mutex]::new($false, 'world-preview-run')
-try { $null = $lock.WaitOne() } catch [Threading.AbandonedMutexException] { }
-try {
-
-# 2. The throwaway server: launcher jar, then the pack's mods, synced again only when the pack changed.
-$launcher = Get-FabricServerJar $Pack $Dir
-$stampFile = Join-Path $Dir '.pack-stamp'
-$stamp = Get-PackStamp $Pack
-if (-not (Test-Path $stampFile) -or [IO.File]::ReadAllText($stampFile).Trim() -ne $stamp) {
-    Sync-Pack $Pack $Dir
-    [IO.File]::WriteAllText($stampFile, $stamp)
-}
-Get-ChildItem (Join-Path $Dir 'mods') -Filter 'world-preview-*.jar' | Remove-Item
-Copy-Item $jar.FullName (Join-Path $Dir 'mods')
-# Distant Horizons does not take part in the generator's answers (the files come out byte for byte the
-# same without it), but it costs seconds at every start. It leaves this folder only: the pack keeps it,
-# and the next sync brings it back before this line takes it out again.
-Get-ChildItem (Join-Path $Dir 'mods') -Filter 'DistantHorizons-*.jar' | Remove-Item
-# The jars asked on top of the pack. Those of the run before leave first, by the names kept from it:
-# a mod that is no longer asked for must not stay in the server.
-if (-not $Mods -and $env:WORLD_PREVIEW_MODS) { $Mods = $env:WORLD_PREVIEW_MODS -split ';' | Where-Object { $_ } }
-$addedFile = Join-Path $Dir '.added-mods'
-if (Test-Path $addedFile) {
-    foreach ($name in [IO.File]::ReadAllLines($addedFile)) {
-        if ($name) { Remove-Item (Join-Path (Join-Path $Dir 'mods') $name) -ErrorAction SilentlyContinue }
+        & $File @Arguments 2>&1 | ForEach-Object {
+            if ($_ -is [Management.Automation.ErrorRecord]) { $errors.Add($_.Exception.Message) } else { Write-Host $_ }
+        }
+        $code = $LASTEXITCODE
+    } finally { $ErrorActionPreference = $previous }
+    if ($code -ne 0) {
+        if ($errors.Count) { throw ($errors -join "`n") }
+        throw "$Failure (code $code)."
     }
 }
-foreach ($mod in $Mods) {
-    if (-not (Test-Path $mod)) { throw "The mod to add was not found: $mod" }
-    Copy-Item $mod (Join-Path $Dir 'mods')
-}
-[IO.File]::WriteAllLines($addedFile, [string[]]@($Mods | Where-Object { $_ } | ForEach-Object { Split-Path $_ -Leaf }))
 
-# 3. The Tectonic config for this run: the pack's file, with the asked values replaced.
-$config = [IO.File]::ReadAllText((Join-Path $Pack 'config\tectonic.json'))
+$stale = -not (Test-Path $exe)
+if (-not $stale) {
+    $built = (Get-Item $exe).LastWriteTime
+    $targetDir = Join-Path $driverDir 'target'
+    $stale = [bool](Get-ChildItem $driverDir -Recurse -File | Where-Object {
+        -not $_.FullName.StartsWith($targetDir, [StringComparison]::OrdinalIgnoreCase) -and $_.LastWriteTime -gt $built
+    } | Select-Object -First 1)
+}
+if ($stale) {
+    if (-not (Get-Command cargo -CommandType Application -ErrorAction SilentlyContinue)) {
+        throw 'The driver has to be built and cargo was not found. Install Rust from https://rustup.rs'
+    }
+    Write-Host 'Building the world-preview driver'
+    Invoke-Program 'cargo' @('build', '--release', '-q', '--manifest-path', (Join-Path $driverDir 'Cargo.toml')) 'The world-preview driver did not build'
+}
+
+# The driver resolves paths from its own folder, not from this shell's: they are made absolute here.
+function Resolve-Argument([string]$Path) { $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Path) }
+$arguments = @('--repo', $repo, '--seed', $Seed, '--samples', "$Samples", '--step', "$Step")
+if ($Pack) { $arguments += '--pack', (Resolve-Argument $Pack) }
+if ($Dir) { $arguments += '--dir', (Resolve-Argument $Dir) }
+if ($Out) { $arguments += '--out', (Resolve-Argument $Out) }
+if ($Detail) { $arguments += '--detail', "$Detail" }
+foreach ($mod in $Mods) { if ($mod) { $arguments += '--mod', (Resolve-Argument $mod) } }
 foreach ($key in $Tectonic.Keys) {
     $value = $Tectonic[$key]
     $text = if ($value -is [bool]) { "$value".ToLower() } else { ([double]$value).ToString([Globalization.CultureInfo]::InvariantCulture) }
-    $pattern = '("' + [regex]::Escape($key) + '":\s*)(-?[0-9.eE+-]+|true|false)'
-    if ($config -notmatch $pattern) { throw "Unknown Tectonic key: $key" }
-    $config = [regex]::Replace($config, $pattern, { param($m) $m.Groups[1].Value + $text })
+    $arguments += '--tectonic', "$key=$text"
 }
-New-Item -ItemType Directory -Force (Join-Path $Dir 'config') | Out-Null
-[IO.File]::WriteAllText((Join-Path $Dir 'config\tectonic.json'), $config)
-
-# 4. A server nobody joins: local only, its own port, one small world folder per seed.
-$world = 'seed-' + ($Seed -replace '[^A-Za-z0-9_-]', '_')
-# Written as UTF-8 without a mark at its head, whatever the shell: the server reads it so.
-[IO.File]::WriteAllLines((Join-Path $Dir 'server.properties'), [string[]]@(
-    'motd=World preview'
-    "level-seed=$Seed"
-    "level-name=$world"
-    'server-ip=127.0.0.1'
-    'server-port=25599'
-    'enable-rcon=false'
-    'view-distance=2'
-    'simulation-distance=2'
-    # The sampling runs inside one tick. A wide grid takes more than the minute after which the
-    # watchdog calls a server crashed and kills it, so the watchdog is off here.
-    'max-tick-time=-1'
-))
-
-# 5. Run. The mod stops the server itself once the files are written.
-Remove-Item (Join-Path $Out 'preview.json'), (Join-Path $Out 'coarse.json'), (Join-Path $Out 'coarse-*.bin'),
-    (Join-Path $Out 'section.json'), (Join-Path $Out 'section-*.bin'), (Join-Path $Out 'ores.json'),
-    (Join-Path $Out 'structures.json'), (Join-Path $Out 'timing.json'), (Join-Path $Out 'progress.json'),
-    (Join-Path $Out 'partial.json'), (Join-Path $Out 'partial-*.bin') -ErrorAction SilentlyContinue
-$watch = [Diagnostics.Stopwatch]::StartNew()
-$null = Invoke-Java $Dir (Join-Path $Dir 'last-run.log') @('-Xmx4G', '-XX:+UseZGC', "-Dworldpreview.out=$Out",
-    "-Dworldpreview.samples=$Samples", "-Dworldpreview.step=$Step", "-Dworldpreview.detail=$Detail", '-jar', $launcher, 'nogui') -Background
-
-if (-not (Test-Path (Join-Path $Out 'preview.json'))) {
-    throw "The preview server ended without a result. See $(Join-Path $Dir 'last-run.log')"
-}
-
-} finally { $lock.ReleaseMutex() }
-
-# What this preview was made with, so the page can show the same seed and values next to the map.
-# A switch is kept as 1 or 0, the form the page's controls take.
-$recorded = @{}
-foreach ($key in $Tectonic.Keys) { $recorded[$key] = if ($Tectonic[$key] -is [bool]) { [int]$Tectonic[$key] } else { $Tectonic[$key] } }
-[IO.File]::WriteAllText((Join-Path $Out 'run.json'), (@{ seed = $Seed; tectonic = $recorded } | ConvertTo-Json))
-Write-Host "Preview ready in $Out ($([int]$watch.Elapsed.TotalSeconds) s)"
+Invoke-Program $exe $arguments 'The world-preview driver failed'

@@ -4,7 +4,7 @@ What a run does, pass by pass, and what each file of the out folder leaves out. 
 
 ## A run
 
-`preview.ps1` prepares a throwaway dedicated server in its work folder (`-Dir`, `run\preview` by default) and starts it:
+The driver (`driver/`, the program `world-preview.exe`, which `scripts/preview.ps1` builds and relays to) prepares a throwaway dedicated server in its work folder (`-Dir`, `run\preview` by default) and starts it:
 
 1. It checks `eula.txt` in the work folder first, before downloading anything there. Accepting the Minecraft EULA is the folder owner's decision; no script writes it.
 2. It takes the mod's jar. Next to its sources, it builds it when they are newer (`mod\gradlew.bat build`, a JDK 25; the first build downloads Gradle and the game, a few minutes). A copy without the sources takes the jar as it is.
@@ -12,7 +12,7 @@ What a run does, pass by pass, and what each file of the out folder leaves out. 
 4. It writes the pack's `config/tectonic.json` into the work folder, with the values the run asked for, and a `server.properties` for a server nobody joins (local only, port 25599, one small world folder per seed, watchdog off since the sampling runs inside one tick).
 5. It starts the server. The mod, dormant unless the server is started with `-Dworldpreview.out`, samples the generator once the server is up, writes the files and stops the server.
 
-The server's output lands in `last-run.log` in the work folder, what Java wrote as errors in `last-run.errors.log`, and the same two for packwiz-installer under `last-sync`. Java runs through `Start-Process` and these files: Windows PowerShell stops a script on the first line a program writes to a redirected error stream.
+The server's output lands in `last-run.log` in the work folder, what Java wrote as errors in `last-run.errors.log`, and the same two for packwiz-installer under `last-sync`. The server and packwiz-installer run inside a Windows job object that ends them with the driver: if the driver is stopped or crashes mid-run, the server stops with it instead of running on alone.
 
 The mod makes several passes, from coarse to full. The sketches first: one point in 16, then 4, then 2 of the full grid along each side, each kept when it leaves at least 128 points a side, without the aquifers, so close but not proven exact. Each replaces `coarse.json` and writes its points as `coarse-<step>-heights.bin` and `coarse-<step>-biomes.bin`; an interface can read `coarse.json` every second and draw a sketch when it is finer than the one on screen.
 

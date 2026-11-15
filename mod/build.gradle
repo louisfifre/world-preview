@@ -9,6 +9,18 @@ base {
 	archivesName = 'world-preview'
 }
 
+// Six classes and their manifest: one flat folder reads better than Gradle's src/main/java/<package>
+// tree. The classes keep their package, which Java does not tie to the folder.
+sourceSets {
+	main {
+		java.srcDirs = ['src']
+		resources {
+			srcDirs = ['src']
+			exclude '**/*.java'
+		}
+	}
+}
+
 dependencies {
 	minecraft "com.mojang:minecraft:${project.minecraft_version}"
 	implementation "net.fabricmc:fabric-loader:${project.loader_version}"
