@@ -1,10 +1,11 @@
 //! The pack: where its mods are, what version of the game it wants, and putting it in the server's folder.
 
 use crate::process::{download, get_text, run_java};
-use crate::{Error, Result, absolute, matching};
+use crate::{Error, Result, STOPPED, absolute, matching};
 use regex::Regex;
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::SystemTime;
 
 const BOOTSTRAP_URL: &str =
@@ -120,7 +121,38 @@ pub fn pack_stamp(pack: &Path) -> Result<String> {
             Ok(format!("{}:{}:{}", jar.file_name().unwrap().to_string_lossy(), meta.len(), ticks))
         })
         .collect::<Result<_>>()?;
-    Ok(format!("{}|{}", pack.display(), parts.join("|")))
+    // The config is part of the pack: a mod's changed setting must reach the game folder, which is
+    // filled again only when the stamp changes.
+    Ok(format!("{}|{}|{}", pack.display(), parts.join("|"), config_stamp(&pack.join("config"))?))
+}
+
+/// Every file of a folder, by its path below the folder and its content, in a fixed order.
+/// A file that is added, removed, renamed or edited changes it.
+fn config_stamp(config: &Path) -> Result<String> {
+    let mut files = Vec::new();
+    list_files(config, Path::new(""), &mut files)?;
+    files.sort();
+    let mut hash = Sha256::new();
+    for relative in files {
+        let bytes = std::fs::read(config.join(&relative)).map_err(|e| Error::new(format!("Could not read {}: {e}", relative.display())))?;
+        hash.update(relative.to_string_lossy().to_lowercase().as_bytes());
+        hash.update([0]);
+        hash.update(Sha256::digest(bytes));
+    }
+    Ok(hash.finalize().iter().map(|b| format!("{b:02X}")).collect())
+}
+
+fn list_files(root: &Path, below: &Path, files: &mut Vec<PathBuf>) -> Result<()> {
+    let Ok(entries) = std::fs::read_dir(root.join(below)) else { return Ok(()) };
+    for entry in entries.flatten() {
+        let relative = below.join(entry.file_name());
+        if entry.path().is_dir() {
+            list_files(root, &relative, files)?;
+        } else {
+            files.push(relative);
+        }
+    }
+    Ok(())
 }
 
 /// `file:///D:/a%20b/pack.toml`, the form packwiz-installer takes.
@@ -151,7 +183,11 @@ fn copy_dir(from: &Path, to: &Path) -> Result<()> {
 }
 
 /// Puts the pack's mods and config into the throwaway server's folder.
-pub fn sync_pack(pack: &Path, target: &Path, repo: &Path, java: &Path, log: &mut dyn FnMut(&str)) -> Result<()> {
+pub fn sync_pack(pack: &Path, target: &Path, repo: &Path, java: &Path, log: &mut dyn FnMut(&str), stop: Option<&AtomicBool>) -> Result<()> {
+    let stopped = || stop.is_some_and(|s| s.load(Ordering::Relaxed));
+    if stopped() {
+        return Err(Error::new(STOPPED));
+    }
     let mods = target.join("mods");
     std::fs::create_dir_all(&mods).map_err(|e| Error::new(format!("Could not create {}: {e}", mods.display())))?;
     if is_packwiz(pack) {
@@ -167,7 +203,7 @@ pub fn sync_pack(pack: &Path, target: &Path, repo: &Path, java: &Path, log: &mut
             file_uri(&pack.join("pack.toml")),
         ]
         .into();
-        let code = run_java(java, target, &sync_log, &args, false, None)?;
+        let code = run_java(java, target, &sync_log, &args, false, stop)?;
         if code != 0 {
             return Err(Error::new(format!(
                 "The pack's mods could not be installed (packwiz-installer, code {code}). See {}. A pack edited by hand needs 'packwiz refresh' first, so that its index matches its files.",
@@ -183,9 +219,21 @@ pub fn sync_pack(pack: &Path, target: &Path, repo: &Path, java: &Path, log: &mut
         std::fs::remove_file(old).map_err(fail)?;
     }
     for jar in matching(&pack.join("mods"), "", ".jar") {
+        if stopped() {
+            return Err(Error::new(STOPPED));
+        }
         std::fs::copy(&jar, mods.join(jar.file_name().unwrap())).map_err(fail)?;
     }
-    copy_dir(&pack.join("config"), &target.join("config"))
+    mirror_dir(&pack.join("config"), &target.join("config"))
+}
+
+/// The folder `to` becomes the same as `from`: what the pack no longer has leaves with it, or a
+/// deleted setting would go on applying in the preview.
+fn mirror_dir(from: &Path, to: &Path) -> Result<()> {
+    if to.exists() {
+        std::fs::remove_dir_all(to).map_err(|e| Error::new(format!("Could not clear {}: {e}", to.display())))?;
+    }
+    copy_dir(from, to)
 }
 
 #[cfg(test)]
@@ -244,6 +292,60 @@ mod tests {
     #[test]
     fn the_uri_escapes_what_a_url_cannot_hold() {
         assert_eq!(file_uri(Path::new(r"D:\a b\pack.toml")), "file:///D:/a%20b/pack.toml");
+    }
+
+    #[test]
+    fn the_stamp_of_a_game_folder_follows_its_config() {
+        let root = scratch("stamp-config");
+        touch(&root.join("mods").join("a.jar"));
+        let config = root.join("config");
+        std::fs::create_dir_all(&config).unwrap();
+        std::fs::write(config.join("mod.json"), "{\"a\":1}").unwrap();
+        let first = pack_stamp(&root).unwrap();
+        assert_eq!(first, pack_stamp(&root).unwrap());
+        // Same size, same names: only the content differs.
+        std::fs::write(config.join("mod.json"), "{\"a\":2}").unwrap();
+        let edited = pack_stamp(&root).unwrap();
+        assert_ne!(first, edited);
+        touch(&config.join("sub").join("x.json"));
+        let added = pack_stamp(&root).unwrap();
+        assert_ne!(edited, added);
+        std::fs::remove_file(config.join("sub").join("x.json")).unwrap();
+        assert_eq!(edited, pack_stamp(&root).unwrap());
+    }
+
+    #[test]
+    fn the_config_of_the_server_becomes_the_packs_and_loses_what_the_pack_dropped() {
+        let root = scratch("mirror");
+        let from = root.join("pack-config");
+        let to = root.join("server-config");
+        std::fs::create_dir_all(from.join("sub")).unwrap();
+        std::fs::write(from.join("kept.json"), "new").unwrap();
+        std::fs::write(from.join("sub").join("deep.json"), "deep").unwrap();
+        std::fs::create_dir_all(to.join("gone")).unwrap();
+        std::fs::write(to.join("kept.json"), "old").unwrap();
+        std::fs::write(to.join("removed.json"), "old").unwrap();
+        std::fs::write(to.join("gone").join("x.json"), "old").unwrap();
+        mirror_dir(&from, &to).unwrap();
+        assert_eq!(std::fs::read_to_string(to.join("kept.json")).unwrap(), "new");
+        assert_eq!(std::fs::read_to_string(to.join("sub").join("deep.json")).unwrap(), "deep");
+        assert!(!to.join("removed.json").exists());
+        assert!(!to.join("gone").exists());
+    }
+
+    #[test]
+    fn a_stop_ends_the_sync_before_it_touches_the_server_folder() {
+        let root = scratch("sync-stop");
+        touch(&root.join("pack").join("mods").join("a.jar"));
+        touch(&root.join("pack").join("config").join("tectonic.json"));
+        let target = root.join("server");
+        let stop = AtomicBool::new(true);
+        let err = sync_pack(&root.join("pack"), &target, &root, Path::new("java.exe"), &mut |_| {}, Some(&stop)).unwrap_err();
+        assert_eq!(err.to_string(), STOPPED);
+        assert!(!target.exists());
+        let stop = AtomicBool::new(false);
+        sync_pack(&root.join("pack"), &target, &root, Path::new("java.exe"), &mut |_| {}, Some(&stop)).unwrap();
+        assert!(target.join("mods").join("a.jar").exists());
     }
 
     #[test]

@@ -15,10 +15,8 @@ use std::fmt;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Command;
 use std::time::{Instant, SystemTime};
-
-use std::os::windows::process::CommandExt;
 
 pub(crate) const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
@@ -148,7 +146,7 @@ fn newest_mod_jar(libs: &Path) -> Option<PathBuf> {
 
 /// The mod jar. A copy shipped without the sources, the jar built beforehand, takes it as it is.
 /// Next to its sources, it is rebuilt when they are newer.
-fn mod_jar(repo: &Path, java: &mut LazyJava, log: &mut dyn FnMut(&str)) -> Result<PathBuf> {
+fn mod_jar(repo: &Path, dir: &Path, java: &mut LazyJava, log: &mut dyn FnMut(&str), stop: Option<&AtomicBool>) -> Result<PathBuf> {
     let mod_root = repo.join("mod");
     let libs = mod_root.join("build").join("libs");
     let jar = newest_mod_jar(&libs);
@@ -169,18 +167,18 @@ fn mod_jar(repo: &Path, java: &mut LazyJava, log: &mut dyn FnMut(&str)) -> Resul
     log("Building the world-preview mod");
     let java_home = java.get()?;
     let java_home = java_home.parent().and_then(Path::parent).map(Path::to_path_buf).unwrap_or_default();
-    let output = Command::new(mod_root.join("gradlew.bat"))
-        .args(["build", "--console=plain", "-q"])
-        .current_dir(&mod_root)
-        .env("JAVA_HOME", java_home)
-        .stdin(Stdio::null())
-        .creation_flags(CREATE_NO_WINDOW)
-        .output()
-        .map_err(|e| Error::new(format!("Could not start the Gradle build of the mod: {e}")))?;
-    for line in String::from_utf8_lossy(&output.stdout).lines().chain(String::from_utf8_lossy(&output.stderr).lines()) {
-        log(line);
+    // Under the same job object and stop flag as the server, so that a stop ends the build and the
+    // processes it started. Its output goes to files, read once it is over.
+    let build_log = dir.join("last-build.log");
+    let mut gradle = Command::new(mod_root.join("gradlew.bat"));
+    gradle.args(["build", "--console=plain", "-q"]).env("JAVA_HOME", java_home);
+    let code = process::run_logged(gradle, &mod_root, &build_log, false, stop)?;
+    for file in [build_log.clone(), build_log.with_extension("errors.log")] {
+        for line in std::fs::read_to_string(file).unwrap_or_default().lines() {
+            log(line);
+        }
     }
-    if !output.status.success() {
+    if code != 0 {
         return Err(Error::new("The world-preview mod did not build."));
     }
     newest_mod_jar(&libs).ok_or_else(|| Error::new(format!("The build left no world-preview jar in {}.", libs.display())))
@@ -253,20 +251,21 @@ pub fn run(options: &Options, log: &mut dyn FnMut(&str)) -> Result<PathBuf> {
         )));
     }
 
+    // One run at a time on this machine: two runs in one folder would overwrite each other's config, and
+    // two servers would ask for the same port. The second one waits. The lock comes before the mod's
+    // build: that build, too, writes where the run before may still be reading.
+    let stop = options.stop.as_deref();
+    let lock = win::RunLock::acquire("world-preview-run", stop)?;
+
     let mut java = LazyJava(None);
     // 1. The mod jar.
-    let jar = mod_jar(repo, &mut java, log)?;
-
-    // One run at a time on this machine: two runs in one folder would overwrite each other's config, and
-    // two servers would ask for the same port. The second one waits.
-    let lock = win::RunLock::acquire("world-preview-run")?;
-
+    let jar = mod_jar(repo, &dir, &mut java, log, stop)?;
     // 2. The throwaway server: launcher jar, then the pack's mods, synced again only when the pack changed.
     let launcher = pack::fabric_server_jar(&pack, &dir, repo, log)?;
     let stamp_file = dir.join(".pack-stamp");
     let stamp = pack::pack_stamp(&pack)?;
     if std::fs::read_to_string(&stamp_file).map(|s| s.trim() != stamp).unwrap_or(true) {
-        pack::sync_pack(&pack, &dir, repo, &java.get()?, log)?;
+        pack::sync_pack(&pack, &dir, repo, &java.get()?, log, stop)?;
         std::fs::write(&stamp_file, &stamp).map_err(|e| io_err("write", &stamp_file, e))?;
     }
     let mods_dir = dir.join("mods");
@@ -356,7 +355,6 @@ pub fn run(options: &Options, log: &mut dyn FnMut(&str)) -> Result<PathBuf> {
         "nogui".into(),
     ];
     // A stop asked while the folder was being prepared is taken before the server starts.
-    let stop = options.stop.as_deref();
     if stop.is_some_and(|s| s.load(Ordering::Relaxed)) {
         return Err(Error::new(STOPPED));
     }
