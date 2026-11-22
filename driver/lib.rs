@@ -42,7 +42,7 @@ impl std::error::Error for Error {}
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-/// What one run needs. Folders that are left out take the script's defaults.
+/// What one run needs. Folders that are left out take the defaults of the library (see Options::new).
 #[derive(Debug, Clone)]
 pub struct Options {
     /// The engine's repository: where `mod/` and `run/` are.
@@ -190,7 +190,7 @@ fn io_err(what: &str, path: &Path, e: std::io::Error) -> Error {
     Error::new(format!("Could not {what} {}: {e}", path.display()))
 }
 
-/// Lines the way Windows writes them, the form the script wrote.
+/// Lines the way Windows writes them, the form the former script wrote.
 fn write_lines(path: &Path, lines: &[String]) -> Result<()> {
     let text: String = lines.iter().map(|l| format!("{l}\r\n")).collect();
     std::fs::write(path, text).map_err(|e| io_err("write", path, e))
@@ -199,13 +199,33 @@ fn write_lines(path: &Path, lines: &[String]) -> Result<()> {
 /// A file of the out folder is written beside its place and moved there in one go:
 /// a reader must never see half of one.
 fn write_whole(path: &Path, text: &str) -> Result<()> {
-    let part = path.with_extension("json.part");
+    // Same `.tmp` ending as the mod's files, so `clear_out` sweeps both.
+    let mut part = path.as_os_str().to_owned();
+    part.push(".tmp");
+    let part = PathBuf::from(part);
     std::fs::write(&part, text).map_err(|e| io_err("write", &part, e))?;
     std::fs::rename(&part, path).map_err(|e| io_err("move", path, e))
 }
 
+/// Removes what the run before left in the out folder, so that a file found there belongs to this run
+/// (the driver takes `preview.json` as the run's success). Temporary files go too: a run that died
+/// between writing a file and moving it leaves a `.tmp` that must not be taken for a result.
+fn clear_out(out: &Path) {
+    for name in [
+        "preview.json", "heights.bin", "biomes.bin", "coarse.json", "section.json", "ores.json",
+        "structures.json", "timing.json", "progress.json", "partial.json", "run.json",
+    ] {
+        let _ = std::fs::remove_file(out.join(name));
+    }
+    for (prefix, suffix) in [("coarse-", ".bin"), ("section-", ".bin"), ("partial-", ".bin"), ("", ".tmp")] {
+        for old in matching(out, prefix, suffix) {
+            let _ = std::fs::remove_file(old);
+        }
+    }
+}
 /// One run: prepares the server folder, runs the server, and returns the out folder.
-/// `log` gets the progress lines.
+/// `log` gets a few log lines (what the driver is doing, the server's start); real progress is
+/// `progress.json` in the out folder, which a caller polls.
 pub fn run(options: &Options, log: &mut dyn FnMut(&str)) -> Result<PathBuf> {
     let repo = &options.repo;
     let pack = pack::resolve_pack(options.pack.as_deref())?;
@@ -321,14 +341,7 @@ pub fn run(options: &Options, log: &mut dyn FnMut(&str)) -> Result<PathBuf> {
     )?;
 
     // 5. Run. The mod stops the server itself once the files are written.
-    for name in ["preview.json", "coarse.json", "section.json", "ores.json", "structures.json", "timing.json", "progress.json", "partial.json"] {
-        let _ = std::fs::remove_file(out.join(name));
-    }
-    for (prefix, suffix) in [("coarse-", ".bin"), ("section-", ".bin"), ("partial-", ".bin")] {
-        for old in matching(&out, prefix, suffix) {
-            let _ = std::fs::remove_file(old);
-        }
-    }
+    clear_out(&out);
     let started = Instant::now();
     let log_file = dir.join("last-run.log");
     let args: Vec<String> = vec![
@@ -391,5 +404,26 @@ mod tests {
         // A valid detail goes on to the next check, the EULA, which is not accepted in a fresh folder.
         options.detail = Some(32);
         assert!(run(&options, &mut |_| {}).unwrap_err().to_string().starts_with("EULA:"));
+    }
+
+    #[test]
+    fn the_out_folder_is_cleared_of_results_and_temporary_files() {
+        let out = std::env::temp_dir().join(format!("world-preview-test-{}-clear", std::process::id()));
+        std::fs::create_dir_all(&out).unwrap();
+        let names = [
+            "preview.json", "heights.bin", "biomes.bin", "run.json", "progress.json", "progress.json.tmp",
+            "partial-heights.bin.tmp", "section-0.bin", "coarse-16-heights.bin", "run.json.tmp",
+        ];
+        for name in names {
+            std::fs::write(out.join(name), "x").unwrap();
+        }
+        std::fs::write(out.join("keep.txt"), "x").unwrap();
+        clear_out(&out);
+        let left: Vec<_> = std::fs::read_dir(&out).unwrap().flatten().map(|e| e.file_name()).collect();
+        assert_eq!(left, vec![std::ffi::OsString::from("keep.txt")]);
+        write_whole(&out.join("run.json"), "{}").unwrap();
+        assert_eq!(std::fs::read_to_string(out.join("run.json")).unwrap(), "{}");
+        assert!(!out.join("run.json.tmp").exists());
+        let _ = std::fs::remove_dir_all(&out);
     }
 }
