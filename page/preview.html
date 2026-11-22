@@ -386,6 +386,7 @@
       <h2><button data-text="profiles"></button></h2>
       <div class="body">
         <div id="profiles" class="choice"></div>
+        <small id="packNote" role="status"></small>
         <div id="settings" class="scroll"></div>
       </div>
     </section>
@@ -505,7 +506,7 @@
     close: '≈',
     points: ' pt',
     // What the list beside the map holds in each view: [its title, the name of its first column].
-    lists: { biomes: ['Biomes', 'biome'], flat: ['Ground', 'ground'], height: ['Heights', 'height'], temperature: ['Temperatures', 'climate'], structures: ['Structures', 'structure'] },
+    lists: { biomes: ['Biomes', 'biome'], flat: ['Ground', 'ground'], slope: ['Steepness', 'ground'], cliffs: ['Cliffs', 'ground'], vegetation: ['Vegetation', 'cover'], height: ['Heights', 'height'], temperature: ['Temperatures', 'climate'], structures: ['Structures', 'structure'] },
     heightBands: (sea, steps, depths) => [`Sea, deeper than ${depths.at(-1)}`, ...depths.map((deep, i) => `Sea, ${i ? depths[i - 1] : 0} to ${deep} deep`).reverse(), ...steps.map((top, i) => `${i ? steps[i - 1] : sea} to ${top}`), `Above ${steps.at(-1)}`],
     pickHint: 'Click rows, here or on the map.',
     // No structure is drawn until it is chosen: said where the list starts.
@@ -585,7 +586,21 @@
     profileDelete: 'Delete',
     profileName: 'Name',
     profileDefault: n => `Try ${n}`,
-    views: { biomes: 'Biomes', flat: 'Flat', height: 'Relief', temperature: 'Temperature', structures: 'Structures' },
+    packApply: 'Apply to pack',
+    packApplyHint: 'Writes these values into the pack’s Tectonic config, the file the game folders are synced from.',
+    packApplyAsk: count => `Write ${count} value${count > 1 ? 's' : ''} into the pack?`,
+    packApplyYes: 'Write',
+    packApplyNo: 'Cancel',
+    packApplied: count => `Written to the pack: ${count} value${count > 1 ? 's' : ''}. Comments and other settings are untouched. Only chunks generated from now on follow them: ground already explored keeps its old shape, and the game folders get them at the next sync.`,
+    packApplyFailed: why => `Not written to the pack${why ? `: ${why}` : '.'}`,
+    views: { biomes: 'Biomes', flat: 'Flat', slope: 'Steepness', cliffs: 'Cliffs', vegetation: 'Vegetation', height: 'Relief', temperature: 'Temperature', structures: 'Structures' },
+    // What each view shows, said on its tab. All of them read the map's points, 16 blocks apart.
+    viewHints: {
+      flat: 'Where a village could stand on level ground: land whose neighbours are within 2 blocks of height.',
+      slope: 'How steep the ground is: the biggest height gap to a neighbour point 16 blocks away. Green is level, red is nearly a wall.',
+      cliffs: 'Where a flat area sits beside a steep wall: at its foot, for houses dug into the rock, or on top, for a village looking down. Walls are read on a 16-block grid: a real face may be sheerer.',
+      vegetation: 'How green the land is, read from the biome’s name: bare rock, sand or snow; open grass; forest; dense jungle, dark forest or swamp. A modded biome with an unusual name counts as open.',
+    },
     shapes: { flat2d: '2D', relief3d: '3D' },
     done: wait => `Preview ready in ${wait}.`,
     failed: 'The run failed. Try again, then see last-run.log in the preview folder.',
@@ -647,6 +662,15 @@
     legend: {
       flat: ['Flat', 'Slopes', 'Water'],
       temperature: ['Frozen', 'Cold', 'Temperate', 'Warm', 'Scorching'],
+      slope: ['Level', 'Gentle', 'Sloping', 'Steep', 'Wall', 'Water'],
+      cliffs: ['Flat at the foot of a wall', 'Wall', 'Flat on top of a wall', 'Other land', 'Water'],
+      vegetation: ['Bare', 'Open', 'Forest', 'Dense', 'Water'],
+    },
+    // The definition of each row, on hover: blocks are the height gap to a neighbour point 16 blocks away.
+    legendHints: {
+      slope: ['Up to 2 blocks', '3 to 5 blocks', '6 to 10 blocks', '11 to 16 blocks: up to 45°', 'More than 16 blocks: steeper than 45°', ''],
+      cliffs: ['Flat ground with a point at least 10 blocks higher within 32 blocks: where houses could be dug into the wall.', 'Land with a gap of more than 10 blocks to a neighbour point.', 'Flat ground with a point at least 10 blocks lower within 32 blocks: a terrace over a drop.', '', ''],
+      vegetation: ['Desert, badlands, bare peaks, ice spikes, stony shores.', 'Plains, savanna, meadow, beaches, tundra and anything not named below.', 'Forests, birch, taiga, groves, cherry.', 'Jungle, dark forest, swamp, mangrove, bamboo.', ''],
     },
   };
   const num = (v, digits = 0) => v.toLocaleString('en-US', { minimumFractionDigits: digits, maximumFractionDigits: digits });
@@ -869,15 +893,42 @@
       queueMicrotask(() => { name.focus(); name.select(); });
     } else if (active) {
       items.push(button(text.profileDelete, () => { profiles = profiles.filter(p => p !== active); save(); showProfiles(); }));
+    } else if (confirmingPack) {
+      // Writing a file of the pack is not undone by this page: it asks once.
+      const ask = Object.assign(document.createElement('span'), { className: 'ask', textContent: text.packApplyAsk(Object.keys(changedValues()).length) });
+      items.push(ask, button(text.packApplyYes, writeToPack), button(text.packApplyNo, () => { confirmingPack = false; showProfiles(); }));
     } else if (!matches(packValues)) {
       items.push(button(text.profileSave, () => { naming = true; showProfiles(); }));
+      const toPack = button(text.packApply, () => { confirmingPack = true; $('packNote').textContent = ''; showProfiles(); });
+      toPack.title = text.packApplyHint;
+      items.push(toPack);
     }
     $('profiles').replaceChildren(...items);
+  }
+  // The sliders that differ from the pack's file, and that alone is written to it.
+  const changedValues = () => Object.fromEntries(Object.keys(packValues)
+    .filter(key => inputs[key] && Math.abs(inputs[key].value - packValues[key]) > 1e-9).map(key => [key, +inputs[key].value]));
+  let confirmingPack = false;
+  async function writeToPack() {
+    const values = changedValues();
+    confirmingPack = false;
+    try {
+      const reply = await fetch('/api/preview/apply', { method: 'POST', body: JSON.stringify({ tectonic: values }) });
+      const done = await reply.json().catch(() => ({}));
+      if (!reply.ok) throw new Error(done.error || '');
+      // The pack now holds these values: they become what "changed" and "Pack" are measured against.
+      Object.assign(packValues, done.written);
+      $('packNote').textContent = text.packApplied(Object.keys(done.written).length);
+    } catch (error) {
+      $('packNote').textContent = text.packApplyFailed(error.message);
+    }
+    for (const input of Object.values(inputs)) input.dispatchEvent(new Event('input'));
+    showProfiles();
   }
 
   // The groups are titles in one list, all of them there. Looking at a view scrolls the list to the groups
   // whose values move what it shows. A group's title row counts its changed values.
-  const opensFor = { biomes: ['biomes', 'continents'], flat: ['relief'], height: ['relief', 'continents'],
+  const opensFor = { slope: ['relief'], cliffs: ['relief'], vegetation: ['biomes'], biomes: ['biomes', 'continents'], flat: ['relief'], height: ['relief', 'continents'],
                      temperature: ['biomes'], structures: ['biomes'], section: ['ores', 'caves', 'relief'] };
   const groups = {};
   function makeGroup(key) {
@@ -1129,7 +1180,7 @@
   let in3d = false;
   // What is shown alone in each view, by id: biomes, or bands of ground, height, temperature. A choice
   // lives through the next run, to follow a biome from one try to the other.
-  const chosen = { biomes: new Set(), flat: new Set(), height: new Set(), temperature: new Set(), structures: new Set(), section: new Set() };
+  const chosen = { biomes: new Set(), flat: new Set(), slope: new Set(), cliffs: new Set(), vegetation: new Set(), height: new Set(), temperature: new Set(), structures: new Set(), section: new Set() };
   // Where one band of height ends and the next starts, above the sea.
   const heightSteps = [100, 150, 200, 250];
   // The same under the sea, in blocks of water over the floor: a shelf, an ocean, a deep ocean with
@@ -1252,6 +1303,13 @@
     }
   }
 
+  // The biggest height gap, in blocks, from a land point to the four points around it, one step away.
+  // A neighbour under water does not count: a river bed would make every bank a slope.
+  function steepness(heights, n, sea, i) {
+    const total = n * n, x = i % n, y = heights[i];
+    const gap = j => heights[j] >= sea ? Math.abs(y - heights[j]) : 0;
+    return Math.max(x > 0 ? gap(i - 1) : 0, x < n - 1 ? gap(i + 1) : 0, i >= n ? gap(i - n) : 0, i < total - n ? gap(i + n) : 0);
+  }
   function measure(meta, heights, biomeAt) {
     const n = meta.samples, total = n * n, sea = meta.seaLevel, coarse = meta.step > 16;
     const cells = new Float64Array(meta.biomes.length);
@@ -1270,12 +1328,8 @@
       if (y < sea) { ocean++; continue; }
       land++;
       if (y > 150) high++;
-      const x = i % n;
       // Level: the ground moves by 2 blocks at most to each neighbour point, one step away.
-      // A neighbour under water does not count: a river bed would make every bank a slope.
-      const gap = j => heights[j] >= sea ? Math.abs(y - heights[j]) : 0;
-      const d = Math.max(x > 0 ? gap(i - 1) : 0, x < n - 1 ? gap(i + 1) : 0, i >= n ? gap(i - n) : 0, i < total - n ? gap(i + n) : 0);
-      if (d <= 2) level[i] = 1;
+      if (steepness(heights, n, sea, i) <= 2) level[i] = 1;
     }
     // 1 where the land is flat, 0 elsewhere: the map draws it, the figures count it.
     // Flat is level ground among level ground: at least 5 of the 9 points around. One level point
@@ -1359,6 +1413,49 @@
       for (let i = 0; i < total; i++) at[i] = band[world.biomeAt[i]];
       names = text.legend.temperature;
       colours = text.legend.temperature.map((_, i) => temperatureColour(-0.7 + i * 2.7 / 4));
+    } else if (kind === 'slope') {
+      // Rows: level, gentle, sloping, steep, wall, then water.
+      const edges = [2, 5, 10, 16];
+      for (let i = 0; i < total; i++) {
+        if (h[i] < sea) { at[i] = 5; continue; }
+        const gap = steepness(h, n, sea, i);
+        const row = edges.findIndex(edge => gap <= edge);
+        at[i] = row < 0 ? edges.length : row;
+      }
+      names = text.legend.slope;
+      colours = [hslToRgb(100, 48, 62), hslToRgb(68, 52, 58), hslToRgb(42, 62, 55), hslToRgb(18, 66, 48), hslToRgb(350, 55, 30), flatColours.sea];
+    } else if (kind === 'cliffs') {
+      // Rows: flat at the foot of a wall, wall, flat on top of a wall, other land, water. A drop of 10 blocks
+      // between two points 16 apart is a wall. Flat is the Flat view's own test, so the two views agree.
+      // The wall is looked for two points away (32 blocks): the ground right at its foot is itself tilted, so
+      // it is rarely flat by the Flat view's test.
+      const WALL = 10, REACH = 2;
+      for (let i = 0; i < total; i++) {
+        if (h[i] < sea) { at[i] = 4; continue; }
+        if (!world.flatAt[i] && steepness(h, n, sea, i) <= WALL) { at[i] = 3; continue; }
+        const x = i % n;
+        let below = false, above = false;
+        for (let dz = -REACH * n; dz <= REACH * n; dz += n) for (let dx = -REACH; dx <= REACH; dx++) {
+          const j = i + dz + dx;
+          if ((dz || dx) && j >= 0 && j < total && x + dx >= 0 && x + dx < n && h[j] >= sea) {
+            if (h[j] - h[i] >= WALL) above = true;
+            if (h[i] - h[j] >= WALL) below = true;
+          }
+        }
+        at[i] = world.flatAt[i] ? (above ? 0 : below ? 2 : 3) : steepness(h, n, sea, i) > WALL ? 1 : 3;
+      }
+      names = text.legend.cliffs;
+      colours = [hslToRgb(18, 78, 55), hslToRgb(0, 0, 28), hslToRgb(215, 70, 62), hslToRgb(30, 8, 62), flatColours.sea];
+    } else if (kind === 'vegetation') {
+      // Read from the biome's name, so a modded biome counts without a table of its own. Rows: bare, open,
+      // forest, dense, water. Water first, so a river biome is never read as a swamp.
+      const cover = world.biomes.map(b => isWater(b.id) ? 4
+        : /desert|badlands|mesa|peaks|ice_spikes|stony|_slopes|dunes|wasteland/.test(b.id) ? 0
+        : /jungle|dark_forest|swamp|mangrove|bamboo|rainforest/.test(b.id) ? 3
+        : /forest|birch|taiga|grove|cherry|woods|woodland/.test(b.id) ? 2 : 1);
+      for (let i = 0; i < total; i++) at[i] = h[i] < sea ? 4 : cover[world.biomeAt[i]] === 4 ? 1 : cover[world.biomeAt[i]];
+      names = text.legend.vegetation;
+      colours = [hslToRgb(38, 28, 66), hslToRgb(78, 52, 62), hslToRgb(120, 45, 42), hslToRgb(140, 60, 24), flatColours.sea];
     } else {
       for (let i = 0; i < total; i++) at[i] = h[i] < sea ? 2 : world.flatAt[i] ? 0 : 1;
       names = text.legend.flat;
@@ -1422,6 +1519,11 @@
         c = temperatureColour(climate(world.biomes[biome]));
         if (water) c = c.map((v, k) => (v + seaVeil[k]) / 2);
         shade = clamp(1 + slope * 0.006, 0.85, 1.15);
+      } else if (view === 'slope' || view === 'cliffs' || view === 'vegetation') {
+        // A sketch does not say it either: its land stays neutral. Vegetation keeps a trace of the relief.
+        const g = stepBack[1];
+        c = !list ? (water ? flatColours.sea : [g, g, g]) : list.colours[rowAt[i]];
+        if (view === 'vegetation' && !water) shade = clamp(1 + slope * 0.006, 0.85, 1.15);
       } else if (view === 'flat') {
         // A sketch does not say where the land is flat: its land stays neutral.
         const g = stepBack[1];
@@ -1658,6 +1760,7 @@
       if (counted) row.children[0].className = 'mark';
       row.children[1].textContent = list.names[i];
       if (view === 'biomes' || counted) row.title = list.ids[i];
+      else if (text.legendHints[view]) row.title = text.legendHints[view][i];
       row.children[2].textContent = blocks(list.widths[i]);
       row.children[3].textContent = counted ? num(list.cells[i]) : percent(100 * list.cells[i] / total);
       row.addEventListener('click', () => choose(list.ids[i]));
@@ -2503,7 +2606,8 @@
 
   // The views a map stopped at a coarser detail cannot give: level land is told 16 blocks apart, and the
   // structures and the cuts come after the full map only.
-  const needsFull = ['flat', 'structures', 'section'];
+  const levelViews = ['flat', 'slope', 'cliffs'];
+  const needsFull = [...levelViews, 'structures', 'section'];
   const coarseMap = () => !!world && !world.sketch && world.step > 16;
   function showTabs() {
     if (coarseMap() && needsFull.includes(view)) { view = 'biomes'; openGroupsFor(view); }
@@ -2512,7 +2616,7 @@
       if (tab.tagName !== 'BUTTON') { tab.hidden = view === 'section'; continue; }
       const key = tab.dataset.view;
       tab.disabled = coarseMap() && needsFull.includes(key);
-      tab.title = tab.disabled ? text.needsFull : '';
+      tab.title = tab.disabled ? text.needsFull : text.viewHints[key] ?? '';
       tab.setAttribute('aria-pressed', key in text.shapes ? (key === 'relief3d') === in3d : key === view);
       if (key in text.shapes) tab.hidden = view === 'section';
     }
@@ -2751,7 +2855,7 @@
     const started = Date.now(), seconds = () => Math.round((Date.now() - started) / 1000);
     // A preview without structures has no picture of them to give.
     // Nor does a coarser map give its level land.
-    const done = [], kinds = Object.keys(text.views).filter(kind => (kind !== 'structures' || world.structures) && !(kind === 'flat' && coarseMap()));
+    const done = [], kinds = Object.keys(text.views).filter(kind => (kind !== 'structures' || world.structures) && !(levelViews.includes(kind) && coarseMap()));
     const step = async label => {
       showSteps(done, label, done.length / (kinds.length + 1));
       // Drawing a wide map holds the page: let it show the step first.
