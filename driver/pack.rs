@@ -19,7 +19,7 @@ pub fn is_packwiz(pack: &Path) -> bool {
 pub fn resolve_pack(pack: Option<&Path>) -> Result<PathBuf> {
     let from_env = std::env::var_os("WORLD_PREVIEW_PACK").filter(|v| !v.is_empty()).map(PathBuf::from);
     let Some(pack) = pack.map(Path::to_path_buf).filter(|p| !p.as_os_str().is_empty()).or(from_env) else {
-        return Err(Error::new("No pack given. Pass -Pack <a game folder or a packwiz pack>, or set WORLD_PREVIEW_PACK."));
+        return Err(Error::new("No pack given. Pass --pack <a game folder or a packwiz pack>, or set WORLD_PREVIEW_PACK."));
     };
     if !pack.is_dir() {
         return Err(Error::new(format!("No such folder: {}", pack.display())));
@@ -114,7 +114,7 @@ pub fn pack_stamp(pack: &Path) -> Result<String> {
                 .modified()
                 .ok()
                 .and_then(|t| t.duration_since(SystemTime::UNIX_EPOCH).ok())
-                // Ticks of 100 ns since year 1, the unit the script's stamp was written in.
+                // Ticks of 100 ns since year 1, the unit the former script's stamp was written in.
                 .map(|d| d.as_nanos() / 100 + 621_355_968_000_000_000)
                 .unwrap_or(0);
             Ok(format!("{}:{}:{}", jar.file_name().unwrap().to_string_lossy(), meta.len(), ticks))
