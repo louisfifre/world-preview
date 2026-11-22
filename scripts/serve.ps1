@@ -261,6 +261,57 @@ try {
                 # Only our own page may start anything, not another site open in the browser.
                 Send-Reply $context 403
             }
+            elseif ($path -eq '/api/preview/apply') {
+                # Writes the page's values into the pack's own Tectonic config, the source a launcher syncs from.
+                # Only the number or switch after each name changes: the comments, the order, the other keys and
+                # the line endings stay as they are. Nothing else is touched (no game folder, no server folder).
+                $body = [IO.StreamReader]::new($request.InputStream, [Text.Encoding]::UTF8).ReadToEnd() | ConvertFrom-Json
+                $kinds = @{}
+                foreach ($setting in (Get-PackTectonic $Pack).settings) { $kinds[$setting.key] = $setting.kind }
+                $asked = @{}
+                $valid = $null -ne $body.tectonic
+                if ($valid) {
+                    foreach ($entry in $body.tectonic.PSObject.Properties) {
+                        $number = $entry.Value -as [double]
+                        if (-not $kinds.ContainsKey($entry.Name) -or $null -eq $number) { $valid = $false; continue }
+                        $asked[$entry.Name] = $number
+                    }
+                }
+                if (-not $valid) { Send-Reply $context 400 (ConvertTo-Json @{ error = 'A value is not a setting of the pack''s Tectonic config.' }) }
+                # The driver reads this file at each run: not while one is under way.
+                elseif ($Run) { Send-Reply $context 409 (ConvertTo-Json @{ error = 'A preview is being computed: wait for it, or stop it.' }) }
+                else {
+                    $file = Join-Path $Pack 'config\tectonic.json'
+                    $utf8 = [Text.UTF8Encoding]::new($false)
+                    $content = [IO.File]::ReadAllText($file, $utf8)
+                    $written = [ordered]@{}
+                    foreach ($key in $asked.Keys) {
+                        $value = $asked[$key]
+                        $pattern = "(?m)^([ \t]*`"$([regex]::Escape($key))`"[ \t]*:[ \t]*)(-?[0-9.eE+-]+|true|false)([ \t]*,?[ \t]*\r?)$"
+                        $found = [regex]::Match($content, $pattern)
+                        if (-not $found.Success) { continue }
+                        $token = $found.Groups[2].Value
+                        $new = if ($kinds[$key] -eq 'switch') { if ($value -ne 0) { 'true' } else { 'false' } }
+                               else {
+                                   $t = $value.ToString('R', [Globalization.CultureInfo]::InvariantCulture)
+                                   # A value written 0.0 stays written with its point.
+                                   if ($token.Contains('.') -and $t -notmatch '[.eE]') { "$t.0" } else { $t }
+                               }
+                        if ($new -ne $token) {
+                            $content = $content.Remove($found.Groups[2].Index, $found.Groups[2].Length).Insert($found.Groups[2].Index, $new)
+                        }
+                        $written[$key] = $value
+                    }
+                    # Beside the file, then moved over it in one go: Tectonic or a sync never reads half of it.
+                    $part = "$file.part"
+                    try {
+                        [IO.File]::WriteAllText($part, $content, $utf8)
+                        # No backup name: under Windows PowerShell 5.1 a plain $null is an empty path.
+                        [IO.File]::Replace($part, $file, [NullString]::Value)
+                    } finally { Remove-Item $part -ErrorAction SilentlyContinue }
+                    Send-Reply $context 200 (ConvertTo-Json @{ written = $written; file = $file })
+                }
+            }
             elseif ($path -eq '/api/preview') {
                 # Starts the throwaway server in the background; the answer comes when it is done, under a
                 # minute for the default area. Meanwhile the loop answers other requests: pings, the sketch.
@@ -319,7 +370,7 @@ try {
                 if ($Run) { $Run.Stopped = $true; Stop-RunJava }
                 Send-Reply $context 200
             }
-            elseif ($path -match '^/api/preview/export/([\w-]{1,90})/((biomes|flat|height|temperature|structures)(-3d)?\.png|section\.png|export\.json)$') {
+            elseif ($path -match '^/api/preview/export/([\w-]{1,90})/((biomes|flat|slope|cliffs|vegetation|height|temperature|structures)(-3d)?\.png|section\.png|export\.json)$') {
                 # One file of an export: the pictures of the map and what the page measured, kept in a
                 # folder of their own so a try can be looked at again, or shown to someone, later.
                 $folder = Join-Path $Exports $Matches[1]
