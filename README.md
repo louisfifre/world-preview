@@ -77,7 +77,7 @@ The grid: `samples` points a side, `step` blocks apart, the first point (north-w
 | `section.json`, `section-<n>.bin` | After a full map | Up to four cuts, west to east across the whole square, along rows of the map chosen for the most varied ground. One byte per block, row by row from the top of the world down: 0 air, 1 rock, 2 water, 3 lava. |
 | `ores.json` | After a full map | Every placement of an ore feature with its steps, as a data pack writes them, and for each biome the placements it lists once every mod has added its own. |
 | `structures.json` | After a full map | `structures`, every structure the overworld can place, `{ id, set, step }`; `points`, one row per start inside the square, `[index into structures, x, z]` in blocks. |
-| `timing.json` | At the end | `{ workMillis }`: how long the mod's own work took, without the game's start and stop. |
+| `timing.json` | At the end | `{ workMillis, failed }`: how long the mod's own work took, without the game's start and stop, and the extras that failed (`section`, `ores`, `structures`; an empty list when none did). A failed extra may leave its files absent; the map is written whatever happens to them. |
 | `run.json` | At the end, written by the driver | `{ seed, tectonic }`: what the run was asked, a switch as 1 or 0. |
 
 [docs/setup.md](docs/setup.md) tells how each pass is made and what each file leaves out.
