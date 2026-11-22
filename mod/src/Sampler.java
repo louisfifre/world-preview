@@ -386,24 +386,12 @@ final class Sampler {
 			heightBytes.putShort(height);
 		}
 
-		ServerLevel level = source.level();
+		// The grid's description is Progress.world's, so the partial file and this one cannot drift apart;
+		// the seed stays first, as it always was.
 		JsonObject json = new JsonObject();
-		json.addProperty("seed", Long.toString(level.getSeed()));
-		json.addProperty("samples", grid.samples());
-		json.addProperty("step", grid.step());
-		json.addProperty("originX", grid.origin());
-		json.addProperty("originZ", grid.origin());
-		json.addProperty("seaLevel", source.generator().getSeaLevel());
-		json.addProperty("minY", level.getMinY());
-		json.addProperty("maxY", level.getMaxY());
-		JsonArray list = new JsonArray();
-		for (Holder<Biome> biome : biomeList) {
-			JsonObject entry = new JsonObject();
-			entry.addProperty("id", biome.getRegisteredName());
-			entry.addProperty("temperature", biome.value().getBaseTemperature());
-			list.add(entry);
-		}
-		json.add("biomes", list);
+		json.addProperty("seed", Long.toString(source.level().getSeed()));
+		Progress.world(source, grid.samples(), grid.step(), grid.origin(), biomeList)
+				.entrySet().forEach(entry -> json.add(entry.getKey(), entry.getValue()));
 		json.add("possible", possibleBiomes(source));
 		json.addProperty("sampleMillis", grid.millis());
 
