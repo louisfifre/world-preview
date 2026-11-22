@@ -386,7 +386,6 @@
       <h2><button data-text="profiles"></button></h2>
       <div class="body">
         <div id="profiles" class="choice"></div>
-        <small id="packNote" role="status"></small>
         <div id="settings" class="scroll"></div>
       </div>
     </section>
@@ -586,13 +585,6 @@
     profileDelete: 'Delete',
     profileName: 'Name',
     profileDefault: n => `Try ${n}`,
-    packApply: 'Apply to pack',
-    packApplyHint: 'Writes these values into the pack’s Tectonic config, the file the game folders are synced from.',
-    packApplyAsk: count => `Write ${count} value${count > 1 ? 's' : ''} into the pack?`,
-    packApplyYes: 'Write',
-    packApplyNo: 'Cancel',
-    packApplied: count => `Written to the pack: ${count} value${count > 1 ? 's' : ''}. Comments and other settings are untouched. Only chunks generated from now on follow them: ground already explored keeps its old shape, and the game folders get them at the next sync.`,
-    packApplyFailed: why => `Not written to the pack${why ? `: ${why}` : '.'}`,
     views: { biomes: 'Biomes', flat: 'Flat', slope: 'Steepness', cliffs: 'Cliffs', vegetation: 'Vegetation', height: 'Relief', temperature: 'Temperature', structures: 'Structures' },
     // What each view shows, said on its tab. All of them read the map's points, 16 blocks apart.
     viewHints: {
@@ -893,39 +885,11 @@
       queueMicrotask(() => { name.focus(); name.select(); });
     } else if (active) {
       items.push(button(text.profileDelete, () => { profiles = profiles.filter(p => p !== active); save(); showProfiles(); }));
-    } else if (confirmingPack) {
-      // Writing a file of the pack is not undone by this page: it asks once.
-      const ask = Object.assign(document.createElement('span'), { className: 'ask', textContent: text.packApplyAsk(Object.keys(changedValues()).length) });
-      items.push(ask, button(text.packApplyYes, writeToPack), button(text.packApplyNo, () => { confirmingPack = false; showProfiles(); }));
     } else if (!matches(packValues)) {
       items.push(button(text.profileSave, () => { naming = true; showProfiles(); }));
-      const toPack = button(text.packApply, () => { confirmingPack = true; $('packNote').textContent = ''; showProfiles(); });
-      toPack.title = text.packApplyHint;
-      items.push(toPack);
     }
     $('profiles').replaceChildren(...items);
   }
-  // The sliders that differ from the pack's file, and that alone is written to it.
-  const changedValues = () => Object.fromEntries(Object.keys(packValues)
-    .filter(key => inputs[key] && Math.abs(inputs[key].value - packValues[key]) > 1e-9).map(key => [key, +inputs[key].value]));
-  let confirmingPack = false;
-  async function writeToPack() {
-    const values = changedValues();
-    confirmingPack = false;
-    try {
-      const reply = await fetch('/api/preview/apply', { method: 'POST', body: JSON.stringify({ tectonic: values }) });
-      const done = await reply.json().catch(() => ({}));
-      if (!reply.ok) throw new Error(done.error || '');
-      // The pack now holds these values: they become what "changed" and "Pack" are measured against.
-      Object.assign(packValues, done.written);
-      $('packNote').textContent = text.packApplied(Object.keys(done.written).length);
-    } catch (error) {
-      $('packNote').textContent = text.packApplyFailed(error.message);
-    }
-    for (const input of Object.values(inputs)) input.dispatchEvent(new Event('input'));
-    showProfiles();
-  }
-
   // The groups are titles in one list, all of them there. Looking at a view scrolls the list to the groups
   // whose values move what it shows. A group's title row counts its changed values.
   const opensFor = { slope: ['relief'], cliffs: ['relief'], vegetation: ['biomes'], biomes: ['biomes', 'continents'], flat: ['relief'], height: ['relief', 'continents'],
