@@ -116,6 +116,7 @@ final class Sampler {
 		WorldPreview.LOG.info("World preview: {} threads of {}", pool.getParallelism(),
 				Runtime.getRuntime().availableProcessors());
 		long began = System.nanoTime();
+		List<String> failed = new ArrayList<>();
 		try (Progress progress = new Progress(out)) {
 			Grid full = run(out, source, pool, progress, samples, step, origin, detail);
 			// A map stopped at a sketch is all that was asked: the cuts and the structures cost the same
@@ -125,16 +126,24 @@ final class Sampler {
 			}
 			progress.begin("extras", step, 0, null);
 			// What comes with the map. The map is already written: trouble here must not lose it.
+			// Each extra has a try of its own, so trouble with one loses neither of the others. Errors
+			// count too (a mod's missing class is one), and timing.json names what failed.
 			try {
 				Section.write(out, source, full, pool);
-				Ores.write(server, out);
-			} catch (Exception e) {
+			} catch (Throwable e) {
+				failed.add("section");
 				WorldPreview.LOG.error("World preview: no section", e);
 			}
-			// A try of its own: trouble with the cuts must not lose the structures, nor the reverse.
+			try {
+				Ores.write(server, out);
+			} catch (Throwable e) {
+				failed.add("ores");
+				WorldPreview.LOG.error("World preview: no ores", e);
+			}
 			try {
 				Structures.write(server, out, source, full, pool);
-			} catch (Exception e) {
+			} catch (Throwable e) {
+				failed.add("structures");
 				WorldPreview.LOG.error("World preview: no structures", e);
 			}
 		} finally {
@@ -143,6 +152,9 @@ final class Sampler {
 			// area. A caller tells it apart from the rest of the wait, the game's start and stop, which does not.
 			JsonObject timing = new JsonObject();
 			timing.addProperty("workMillis", (System.nanoTime() - began) / 1_000_000);
+			JsonArray failedNames = new JsonArray();
+			failed.forEach(failedNames::add);
+			timing.add("failed", failedNames);
 			OutFile.write(out.resolve("timing.json"), timing.toString());
 		}
 	}
@@ -374,24 +386,12 @@ final class Sampler {
 			heightBytes.putShort(height);
 		}
 
-		ServerLevel level = source.level();
+		// The grid's description is Progress.world's, so the partial file and this one cannot drift apart;
+		// the seed stays first, as it always was.
 		JsonObject json = new JsonObject();
-		json.addProperty("seed", Long.toString(level.getSeed()));
-		json.addProperty("samples", grid.samples());
-		json.addProperty("step", grid.step());
-		json.addProperty("originX", grid.origin());
-		json.addProperty("originZ", grid.origin());
-		json.addProperty("seaLevel", source.generator().getSeaLevel());
-		json.addProperty("minY", level.getMinY());
-		json.addProperty("maxY", level.getMaxY());
-		JsonArray list = new JsonArray();
-		for (Holder<Biome> biome : biomeList) {
-			JsonObject entry = new JsonObject();
-			entry.addProperty("id", biome.getRegisteredName());
-			entry.addProperty("temperature", biome.value().getBaseTemperature());
-			list.add(entry);
-		}
-		json.add("biomes", list);
+		json.addProperty("seed", Long.toString(source.level().getSeed()));
+		Progress.world(source, grid.samples(), grid.step(), grid.origin(), biomeList)
+				.entrySet().forEach(entry -> json.add(entry.getKey(), entry.getValue()));
 		json.add("possible", possibleBiomes(source));
 		json.addProperty("sampleMillis", grid.millis());
 
