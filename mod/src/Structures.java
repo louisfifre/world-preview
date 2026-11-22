@@ -2,7 +2,6 @@ package exploration.preview;
 
 import java.io.IOException;
 import java.lang.reflect.Field;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -62,7 +61,7 @@ final class Structures {
 	/**
 	 * One structure of one set, as listed in the output. The step is the generation step the structure
 	 * declares (underground_structures, surface_structures...): the only thing the generator says of
-	 * whether it is built under the ground, so the page can tell a mineshaft from a village.
+	 * whether it is built under the ground, so an interface can tell a mineshaft from a village.
 	 */
 	private record Entry(String id, String set, String step) {
 	}
@@ -162,7 +161,7 @@ final class Structures {
 		JsonObject json = new JsonObject();
 		json.add("structures", list);
 		json.add("points", points);
-		Files.writeString(out.resolve("structures.json"), new GsonBuilder().create().toJson(json));
+		OutFile.write(out.resolve("structures.json"), new GsonBuilder().create().toJson(json));
 		WorldPreview.LOG.info("World preview (structures): {} starts of {} structures, {} chunks tried, {} left out, {} ms",
 				points.size(), entries.size(), candidates.size(), failures, (System.nanoTime() - started) / 1_000_000);
 	}

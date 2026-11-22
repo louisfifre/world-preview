@@ -4,9 +4,7 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.util.List;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -19,17 +17,17 @@ import net.minecraft.core.Holder;
 import net.minecraft.world.level.biome.Biome;
 
 /**
- * What the run is doing, for the page, which otherwise only learns of a pass once its files land.
+ * What the run is doing, for the interface, which otherwise only learns of a pass once its files land.
  *
- * <p>{@code progress.json} says which pass is under way and how many of its tiles are done: the page
+ * <p>{@code progress.json} says which pass is under way and how many of its tiles are done: the interface
  * shows the step under way as it starts, with a real share, instead of ticking it once it is over. Its
  * presence alone says the game has started. During the map's own pass, the points already known are
  * written too ({@code partial-heights.bin}, {@code partial-biomes.bin}, then {@code partial.json}), so
  * the map fills in on screen tile by tile instead of appearing at the end.
  *
  * <p>Everything is written from a thread of its own, every half second, so the sampling threads never
- * wait on the disk. Each file is written beside its place and moved there in one go: the page never reads
- * half a file. A move fails while the page's server is reading the old file; the next tick tries again.
+ * wait on the disk. Each file is written beside its place and moved there in one go ({@link OutFile}): a reader never sees
+ * half a file. A move can fail while a reader holds the old file; the next tick tries again.
  */
 final class Progress implements AutoCloseable {
 	/** A point of the map's pass not sampled yet, in {@code partial-biomes.bin}. */
@@ -89,7 +87,7 @@ final class Progress implements AutoCloseable {
 	}
 
 	/**
-	 * The points known so far, once a second at most: a wide map's files weigh megabytes, and the page
+	 * The points known so far, once a second at most: a wide map's files weigh megabytes, and the interface
 	 * redraws the whole map each time.
 	 */
 	private void writePartial() {
@@ -111,7 +109,7 @@ final class Progress implements AutoCloseable {
 		JsonObject json = p.world().deepCopy();
 		json.addProperty("done", now);
 		json.addProperty("total", total);
-		// The json last: its presence tells the page the two binary files beside it are whole.
+		// The json last: its presence tells a reader the two binary files beside it are whole.
 		if (replace(out.resolve("partial-heights.bin"), heights.array())
 				&& replace(out.resolve("partial-biomes.bin"), biomes.array())
 				&& replace(out.resolve("partial.json"), json.toString().getBytes(StandardCharsets.UTF_8))) {
@@ -120,7 +118,7 @@ final class Progress implements AutoCloseable {
 		}
 	}
 
-	/** The description of a map the page draws, as in {@code preview.json}, with every possible biome as its list. */
+	/** The description of a map an interface draws, as in {@code preview.json}, with every possible biome as its list. */
 	static JsonObject world(Sampler.Generator source, int samples, int step, int origin, List<Holder<Biome>> biomeList) {
 		JsonObject json = new JsonObject();
 		json.addProperty("samples", samples);
@@ -141,11 +139,10 @@ final class Progress implements AutoCloseable {
 		return json;
 	}
 
+	/** A failed move is not fatal here: the next tick writes again. */
 	private static boolean replace(Path target, byte[] bytes) {
-		Path temporary = target.resolveSibling(target.getFileName() + ".tmp");
 		try {
-			Files.write(temporary, bytes);
-			Files.move(temporary, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+			OutFile.write(target, bytes);
 			return true;
 		} catch (IOException e) {
 			return false;

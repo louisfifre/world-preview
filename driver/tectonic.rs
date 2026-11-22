@@ -28,8 +28,8 @@ pub fn rewrite(config: &str, values: &[(String, Value)]) -> Result<String> {
     Ok(config)
 }
 
-/// What this preview was made with, so a page can show the same seed and values next to the map.
-/// A switch is kept as 1 or 0, the form a page's controls take.
+/// What this preview was made with, so a caller can show the same seed and values next to the map.
+/// A switch is kept as 1 or 0, the form a caller's controls take.
 pub fn run_record(seed: &str, values: &[(String, Value)]) -> String {
     let mut tectonic = Map::new();
     for (key, value) in values {

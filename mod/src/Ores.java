@@ -1,7 +1,6 @@
 package exploration.preview;
 
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
@@ -30,7 +29,7 @@ import net.minecraft.world.level.levelgen.placement.PlacementModifier;
  * them: for each ore placement, what it places and its placement steps, in the same JSON a data
  * pack holds, and for each biome, the placements it lists once every mod has added its own.
  *
- * <p>Nothing is placed and nothing is counted here: the page reads the rules and plays them on a
+ * <p>Nothing is placed and nothing is counted here: an interface reads the rules and plays them on a
  * cut. Output: {@code ores.json}.
  */
 final class Ores {
@@ -82,7 +81,7 @@ final class Ores {
 		JsonObject json = new JsonObject();
 		json.add("placements", placements);
 		json.add("biomes", perBiome);
-		Files.writeString(out.resolve("ores.json"), new GsonBuilder().create().toJson(json));
+		OutFile.write(out.resolve("ores.json"), new GsonBuilder().create().toJson(json));
 		WorldPreview.LOG.info("World preview (ores): {} placements", placements.size());
 	}
 }

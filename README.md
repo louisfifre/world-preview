@@ -54,7 +54,7 @@ driver/target/release/world-preview.exe --pack D:\path\to\my-pack --dir D:\path\
 
 On failure the program prints the sentence on its error stream and exits with code 1, so a caller can show it. It ends with `Preview ready in <out> (<n> s)`. One run at a time on a machine: a second one waits for the first. If the program is killed mid-run, the throwaway server dies with it.
 
-A Rust program can call the same run as a library instead: `world_preview::run(&options, &mut |line| ...)` (a path dependency on `driver/`), which hands each progress line to the closure as it comes and returns the out folder. `Options::stop`, a flag set from another thread, ends the run and its server; that is how Outpost Tools' native launcher runs it.
+A Rust program can call the same run as a library instead: `world_preview::run(&options, &mut |line| ...)` (a path dependency on `driver/`), which hands the closure a few log lines as it goes (real progress is `progress.json`, which a caller polls) and returns the out folder. `Options::stop`, a flag set from another thread, ends the run and its server; that is how Outpost Tools' native launcher runs it.
 
 ### The Minecraft EULA, once per work folder
 
@@ -62,7 +62,7 @@ The engine runs a Minecraft server, and Minecraft asks whoever runs a server to 
 
 ## What it outputs
 
-Everything lands in the out folder. A run removes the files of the run before first, then writes each file beside its place and moves it there in one go, so a reader never sees half of one.
+Everything lands in the out folder. A run removes the files of the run before first, leftover temporary files included, then writes each file beside its place and moves it there in one go, so a reader never sees half of one.
 
 The grid: `samples` points a side, `step` blocks apart, the first point (north-west) at `originX`, `originZ`. Point `i` is at column `i % samples`, row `i / samples`, that is at `x = originX + column * step`, `z = originZ + row * step`: row by row from north to south, each row from west to east. Every `.bin` file is little-endian.
 
@@ -78,7 +78,7 @@ The grid: `samples` points a side, `step` blocks apart, the first point (north-w
 | `ores.json` | After a full map | Every placement of an ore feature with its steps, as a data pack writes them, and for each biome the placements it lists once every mod has added its own. |
 | `structures.json` | After a full map | `structures`, every structure the overworld can place, `{ id, set, step }`; `points`, one row per start inside the square, `[index into structures, x, z]` in blocks. |
 | `timing.json` | At the end | `{ workMillis }`: how long the mod's own work took, without the game's start and stop. |
-| `run.json` | At the end, written by the script | `{ seed, tectonic }`: what the run was asked, a switch as 1 or 0. |
+| `run.json` | At the end, written by the driver | `{ seed, tectonic }`: what the run was asked, a switch as 1 or 0. |
 
 [docs/setup.md](docs/setup.md) tells how each pass is made and what each file leaves out.
 

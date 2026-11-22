@@ -87,7 +87,7 @@ mod tests {
     }
 
     #[test]
-    fn defaults_are_the_scripts() {
+    fn defaults_are_those_of_the_options() {
         let Ok(Parsed::Run { options, repo }) = parse_strs(&[]) else { panic!() };
         assert_eq!((options.seed.as_str(), options.samples, options.step), ("cap-1", 512, 16));
         assert!(options.pack.is_none() && options.detail.is_none() && repo.is_none());
