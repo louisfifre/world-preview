@@ -1,7 +1,6 @@
 package exploration.preview;
 
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -64,7 +63,7 @@ final class Section {
 		for (Line line : choose(grid, sea, source.level().getSeed())) {
 			int x0 = grid.origin(), z = grid.origin() + line.row() * grid.step();
 			String file = "section-" + index++ + ".bin";
-			Files.write(out.resolve(file), cells(source, pool, x0, z, length));
+			OutFile.write(out.resolve(file), cells(source, pool, x0, z, length));
 			JsonObject cut = new JsonObject();
 			cut.addProperty("file", file);
 			cut.addProperty("x", x0);
@@ -79,7 +78,7 @@ final class Section {
 		json.addProperty("seaLevel", sea);
 		json.add("cuts", cuts);
 		// Written last: its presence tells the caller the cuts are complete.
-		Files.writeString(out.resolve("section.json"), new GsonBuilder().setPrettyPrinting().create().toJson(json));
+		OutFile.write(out.resolve("section.json"), new GsonBuilder().setPrettyPrinting().create().toJson(json));
 		WorldPreview.LOG.info("World preview (section): {} cuts of {} blocks, {} ms", cuts.size(), length,
 				(System.nanoTime() - started) / 1_000_000);
 	}

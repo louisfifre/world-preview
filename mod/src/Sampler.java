@@ -51,7 +51,7 @@ import net.minecraft.world.level.levelgen.densityfunction.ScopedDensityBuffer;
  * high is the ground, and which biome is at the surface. This is the same rule our placement code
  * follows, and it is why a map of 8000 blocks takes seconds instead of the minutes real chunks need.
  *
- * <p>Several passes over the same square, from coarse to full, so the page can show a sketch of the
+ * <p>Several passes over the same square, from coarse to full, so a caller can show a sketch of the
  * map that gets finer while the full one is computed. Output, in the given folder:
  * {@code preview.json} (grid description and biome list), {@code heights.bin} (one little-endian
  * int16 per point, row by row, north to south) and {@code biomes.bin} (one little-endian uint16 per
@@ -110,7 +110,7 @@ final class Sampler {
 		int origin = -(samples * step) / 2;
 		Files.createDirectories(out);
 		// The passes run on a pool of their own rather than on the JVM's shared one, which takes every
-		// core: a full pass lasts minutes, and with all cores busy the machine, the page that shows the
+		// core: a full pass lasts minutes, and with all cores busy the machine, the interface that shows the
 		// sketch included, stops answering.
 		ForkJoinPool pool = new ForkJoinPool(threads());
 		WorldPreview.LOG.info("World preview: {} threads of {}", pool.getParallelism(),
@@ -140,10 +140,10 @@ final class Sampler {
 		} finally {
 			pool.shutdown();
 			// How long the mod's own work took, from the first pass to the last file: what grows with the
-			// area. The page tells it apart from the rest of the wait, the game's start and stop, which does not.
+			// area. A caller tells it apart from the rest of the wait, the game's start and stop, which does not.
 			JsonObject timing = new JsonObject();
 			timing.addProperty("workMillis", (System.nanoTime() - began) / 1_000_000);
-			Files.writeString(out.resolve("timing.json"), timing.toString());
+			OutFile.write(out.resolve("timing.json"), timing.toString());
 		}
 	}
 
@@ -206,7 +206,7 @@ final class Sampler {
 
 	/**
 	 * One pass, with the aquifers when {@code exact}, as the generator does. The {@code map} pass, the one
-	 * written as the map, also hands its points to the page as they come (see {@link Progress}).
+	 * written as the map, also hands its points to a caller as they come (see {@link Progress}).
 	 */
 	private static Grid sample(Generator source, ForkJoinPool pool, Progress progress, int samples, int step,
 			int origin, boolean exact, boolean map) {
@@ -327,7 +327,7 @@ final class Sampler {
 	}
 
 	/**
-	 * Every biome the generator's biome source can place, so the page can say which ones the square does
+	 * Every biome the generator's biome source can place, so a caller can say which ones the square does
 	 * not hold. The map reads the surface only, and a cave biome can never be met there: each entry says
 	 * whether the biome is tagged as underground ({@code c:is_underground}, the tag Fabric API and the
 	 * mods that add cave biomes fill). Without that tag in the pack, every biome counts as a surface one.
@@ -396,10 +396,10 @@ final class Sampler {
 		json.addProperty("sampleMillis", grid.millis());
 
 		String prefix = name.equals("preview") ? "" : name + "-" + grid.step() + "-";
-		Files.write(out.resolve(prefix + "heights.bin"), heightBytes.array());
-		Files.write(out.resolve(prefix + "biomes.bin"), biomeBytes.array());
+		OutFile.write(out.resolve(prefix + "heights.bin"), heightBytes.array());
+		OutFile.write(out.resolve(prefix + "biomes.bin"), biomeBytes.array());
 		// Written last: its presence tells the caller the two binary files are complete.
-		Files.writeString(out.resolve(name + ".json"), new GsonBuilder().setPrettyPrinting().create().toJson(json));
+		OutFile.write(out.resolve(name + ".json"), new GsonBuilder().setPrettyPrinting().create().toJson(json));
 
 		WorldPreview.LOG.info("World preview ({}): {} x {} points every {} blocks, {} biomes, {} ms",
 				name, grid.samples(), grid.samples(), grid.step(), biomeList.size(), grid.millis());
