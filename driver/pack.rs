@@ -1,10 +1,11 @@
 //! The pack: where its mods are, what version of the game it wants, and putting it in the server's folder.
 
 use crate::process::{download, get_text, run_java};
-use crate::{Error, Result, absolute, matching};
+use crate::{Error, Result, STOPPED, absolute, matching};
 use regex::Regex;
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::SystemTime;
 
 const BOOTSTRAP_URL: &str =
@@ -182,7 +183,11 @@ fn copy_dir(from: &Path, to: &Path) -> Result<()> {
 }
 
 /// Puts the pack's mods and config into the throwaway server's folder.
-pub fn sync_pack(pack: &Path, target: &Path, repo: &Path, java: &Path, log: &mut dyn FnMut(&str)) -> Result<()> {
+pub fn sync_pack(pack: &Path, target: &Path, repo: &Path, java: &Path, log: &mut dyn FnMut(&str), stop: Option<&AtomicBool>) -> Result<()> {
+    let stopped = || stop.is_some_and(|s| s.load(Ordering::Relaxed));
+    if stopped() {
+        return Err(Error::new(STOPPED));
+    }
     let mods = target.join("mods");
     std::fs::create_dir_all(&mods).map_err(|e| Error::new(format!("Could not create {}: {e}", mods.display())))?;
     if is_packwiz(pack) {
@@ -198,7 +203,7 @@ pub fn sync_pack(pack: &Path, target: &Path, repo: &Path, java: &Path, log: &mut
             file_uri(&pack.join("pack.toml")),
         ]
         .into();
-        let code = run_java(java, target, &sync_log, &args, false, None)?;
+        let code = run_java(java, target, &sync_log, &args, false, stop)?;
         if code != 0 {
             return Err(Error::new(format!(
                 "The pack's mods could not be installed (packwiz-installer, code {code}). See {}. A pack edited by hand needs 'packwiz refresh' first, so that its index matches its files.",
@@ -214,6 +219,9 @@ pub fn sync_pack(pack: &Path, target: &Path, repo: &Path, java: &Path, log: &mut
         std::fs::remove_file(old).map_err(fail)?;
     }
     for jar in matching(&pack.join("mods"), "", ".jar") {
+        if stopped() {
+            return Err(Error::new(STOPPED));
+        }
         std::fs::copy(&jar, mods.join(jar.file_name().unwrap())).map_err(fail)?;
     }
     mirror_dir(&pack.join("config"), &target.join("config"))
@@ -323,6 +331,21 @@ mod tests {
         assert_eq!(std::fs::read_to_string(to.join("sub").join("deep.json")).unwrap(), "deep");
         assert!(!to.join("removed.json").exists());
         assert!(!to.join("gone").exists());
+    }
+
+    #[test]
+    fn a_stop_ends_the_sync_before_it_touches_the_server_folder() {
+        let root = scratch("sync-stop");
+        touch(&root.join("pack").join("mods").join("a.jar"));
+        touch(&root.join("pack").join("config").join("tectonic.json"));
+        let target = root.join("server");
+        let stop = AtomicBool::new(true);
+        let err = sync_pack(&root.join("pack"), &target, &root, Path::new("java.exe"), &mut |_| {}, Some(&stop)).unwrap_err();
+        assert_eq!(err.to_string(), STOPPED);
+        assert!(!target.exists());
+        let stop = AtomicBool::new(false);
+        sync_pack(&root.join("pack"), &target, &root, Path::new("java.exe"), &mut |_| {}, Some(&stop)).unwrap();
+        assert!(target.join("mods").join("a.jar").exists());
     }
 
     #[test]
